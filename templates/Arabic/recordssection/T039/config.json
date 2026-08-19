@@ -1,0 +1,22 @@
+{
+  "id": "T039",
+  "titleAr": "سجل انذار الغياب",
+  "titleEn": "Absence Warning Record",
+  "version": "1.0",
+  "category": "سجلات",
+  "type": "document",
+  "allowAddRows": false,
+  "defaultRows": 0,
+  "sortOrder": 39,
+  "enabled": true,
+  "calculateTotals": false,
+  "cleanUnusedPlaceholders": true,
+  "placeholderKeys": [
+    "academic_year",
+    "city",
+    "principal_name",
+    "school_name",
+    "title"
+  ],
+  "preview": "preview.png"
+}

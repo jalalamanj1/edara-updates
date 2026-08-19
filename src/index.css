@@ -1,0 +1,297 @@
+/* Cairo is bundled locally (public/fonts/cairo) so the app works fully offline. */
+@font-face {
+  font-family: 'Cairo';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/cairo/cairo-arabic.woff2') format('woff2');
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC, U+102E0-102FB, U+10E60-10E7E, U+10EC2-10EC4, U+10EFC-10EFF, U+1EE00-1EE03, U+1EE05-1EE1F, U+1EE21-1EE22, U+1EE24, U+1EE27, U+1EE29-1EE32, U+1EE34-1EE37, U+1EE39, U+1EE3B, U+1EE42, U+1EE47, U+1EE49, U+1EE4B, U+1EE4D-1EE4F, U+1EE51-1EE52, U+1EE54, U+1EE57, U+1EE59, U+1EE5B, U+1EE5D, U+1EE5F, U+1EE61-1EE62, U+1EE64, U+1EE67-1EE6A, U+1EE6C-1EE72, U+1EE74-1EE77, U+1EE79-1EE7C, U+1EE7E, U+1EE80-1EE89, U+1EE8B-1EE9B, U+1EEA1-1EEA3, U+1EEA5-1EEA9, U+1EEAB-1EEBB, U+1EEF0-1EEF1;
+}
+@font-face {
+  font-family: 'Cairo';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/cairo/cairo-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Cairo';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/cairo/cairo-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@import "tailwindcss";
+
+@theme {
+  /* Brand: every blue/indigo accent becomes a coherent scale based on primary #0b4374 */
+  --color-blue-50: #eaf1f8;
+  --color-blue-100: #d4e2f1;
+  --color-blue-200: #a9c4e3;
+  --color-blue-300: #7ba3d3;
+  --color-blue-400: #4a7eb6;
+  --color-blue-500: #2a619d;
+  --color-blue-600: #0b4374;
+  --color-blue-700: #093a64;
+  --color-blue-800: #083257;
+  --color-blue-900: #072747;
+  --color-blue-950: #041a32;
+
+  --color-indigo-50: #eaf1f8;
+  --color-indigo-100: #d4e2f1;
+  --color-indigo-200: #a9c4e3;
+  --color-indigo-300: #7ba3d3;
+  --color-indigo-400: #4a7eb6;
+  --color-indigo-500: #2a619d;
+  --color-indigo-600: #0b4374;
+  --color-indigo-700: #093a64;
+  --color-indigo-800: #083257;
+  --color-indigo-900: #072747;
+  --color-indigo-950: #041a32;
+}
+
+* {
+  font-family: 'Cairo', -apple-system, BlinkMacSystemFont, sans-serif !important;
+}
+
+@layer base {
+  :root {
+    font-family: 'Cairo', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  
+  body, button, input, select, textarea, table, th, td, label, span, p, h1, h2, h3, h4, h5, h6 {
+    font-family: 'Cairo', -apple-system, BlinkMacSystemFont, sans-serif !important;
+  }
+}
+
+/* Custom desktop scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* ============================================================
+   Edara Theme System — Dark Theme
+   - Light theme stays exactly as the Tailwind defaults.
+   - Dark theme is a centralized translation: we remap the
+     Tailwind color tokens in [data-theme="dark"], then override
+     the text- utilities (and a few conflicting bg- utilities)
+     so foreground text remains light. No component is edited.
+   ============================================================ */
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Brand / slate scale (background + border polarity) */
+  --color-white: #ffffff;
+
+  --color-slate-50: #08111f;
+  --color-slate-100: #0b1626;
+  --color-slate-200: #142338;
+  --color-slate-300: #192a40;
+  --color-slate-400: #22344a;
+  --color-slate-500: #2a4057;
+  --color-slate-600: #34506b;
+  --color-slate-700: #3e5c7a;
+  --color-slate-800: #4a6b8c;
+  --color-slate-900: #f3f7fc;
+  --color-slate-950: #f3f7fc;
+
+  /* Blue / Indigo (brand) */
+  --color-blue-50: #123b61;
+  --color-blue-100: #123b61;
+  --color-blue-200: #29415a;
+  --color-blue-300: #3d8ac7;
+  --color-blue-400: #63a8e8;
+  --color-blue-500: #3d8ac7;
+  --color-blue-600: #1769a8;
+  --color-blue-700: #1d7fc5;
+  --color-blue-800: #1d7fc5;
+  --color-blue-900: #9fc7e8;
+
+  --color-indigo-50: #123b61;
+  --color-indigo-100: #123b61;
+  --color-indigo-200: #29415a;
+  --color-indigo-300: #3d8ac7;
+  --color-indigo-400: #63a8e8;
+  --color-indigo-500: #3d8ac7;
+  --color-indigo-600: #1769a8;
+  --color-indigo-700: #1d7fc5;
+  --color-indigo-800: #1d7fc5;
+  --color-indigo-900: #9fc7e8;
+
+  /* Emerald (success) */
+  --color-emerald-50: #123d31;
+  --color-emerald-100: #15402f;
+  --color-emerald-200: #1c5a40;
+  --color-emerald-300: #2fb37c;
+  --color-emerald-400: #35c98a;
+  --color-emerald-500: #35c98a;
+  --color-emerald-600: #176a49;
+  --color-emerald-700: #1f7d56;
+  --color-emerald-800: #1f7d56;
+  --color-emerald-900: #c7f0dc;
+
+  /* Red (danger) */
+  --color-red-50: #48242a;
+  --color-red-100: #5e2e33;
+  --color-red-200: #7a3b42;
+  --color-red-300: #ef6b73;
+  --color-red-400: #ef6b73;
+  --color-red-500: #ef6b73;
+  --color-red-600: #b23a40;
+  --color-red-700: #c44a50;
+  --color-red-800: #c44a50;
+  --color-red-900: #fbd5d8;
+
+  /* Amber (warning) */
+  --color-amber-50: #493318;
+  --color-amber-100: #5e431f;
+  --color-amber-200: #7a5a2c;
+  --color-amber-300: #f3a64a;
+  --color-amber-400: #f3a64a;
+  --color-amber-500: #f3a64a;
+  --color-amber-600: #b5772f;
+  --color-amber-700: #c98a3f;
+  --color-amber-800: #f2b66b;
+  --color-amber-900: #fbe0bc;
+
+  /* Sky */
+  --color-sky-50: #0e2f45;
+  --color-sky-100: #123b55;
+  --color-sky-200: #1b5273;
+  --color-sky-300: #2a7ba8;
+  --color-sky-400: #38bdf8;
+  --color-sky-500: #38bdf8;
+  --color-sky-600: #3da8de;
+  --color-sky-700: #7cc7ec;
+  --color-sky-800: #a9dbf2;
+  --color-sky-900: #d3eefa;
+
+  /* Pink / Purple */
+  --color-pink-50: #4a2233;
+  --color-pink-100: #5e2a40;
+  --color-pink-700: #f0b8d0;
+  --color-purple-50: #2e2350;
+  --color-purple-100: #3a2d5e;
+  --color-purple-200: #4a3a72;
+  --color-purple-700: #c9b6f0;
+}
+
+/* Base application canvas (navy / blue-black, never pure black) */
+[data-theme="dark"] body {
+  background:
+    radial-gradient(circle at 20% 10%, rgba(30, 100, 160, 0.08), transparent 35%),
+    #08111f;
+  color: #f3f7fc;
+}
+
+/* Subtle dark scrollbars */
+[data-theme="dark"] ::-webkit-scrollbar-track {
+  background: #0b1626;
+}
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: #29415a;
+  border-radius: 4px;
+}
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: #3a5875;
+}
+
+/* --- Foreground text overrides (keep text light in dark mode) --- */
+[data-theme="dark"] .text-white { color: #f3f7fc; }
+[data-theme="dark"] .text-slate-300 { color: #8faac4; }
+[data-theme="dark"] .text-slate-400 { color: #7f91a7; }
+[data-theme="dark"] .text-slate-500 { color: #9fb0c2; }
+[data-theme="dark"] .text-slate-600 { color: #b7c5d6; }
+[data-theme="dark"] .text-slate-700 { color: #c6d3e1; }
+[data-theme="dark"] .text-slate-800 { color: #e2eaf3; }
+[data-theme="dark"] .text-slate-900 { color: #f3f7fc; }
+
+[data-theme="dark"] .text-blue-400 { color: #63a8e8; }
+[data-theme="dark"] .text-blue-500 { color: #7fb8e8; }
+[data-theme="dark"] .text-blue-600 { color: #8fc2ee; }
+[data-theme="dark"] .text-blue-700 { color: #a9d2f2; }
+[data-theme="dark"] .text-blue-800 { color: #c6e2f8; }
+[data-theme="dark"] .text-blue-900 { color: #dceefb; }
+
+[data-theme="dark"] .text-indigo-400 { color: #8fb6da; }
+[data-theme="dark"] .text-indigo-600 { color: #a9c8e8; }
+[data-theme="dark"] .text-indigo-700 { color: #c6dcf4; }
+[data-theme="dark"] .text-indigo-900 { color: #e2eefb; }
+
+[data-theme="dark"] .text-emerald-500,
+[data-theme="dark"] .text-emerald-600 { color: #4fd6a0; }
+[data-theme="dark"] .text-emerald-700,
+[data-theme="dark"] .text-emerald-800,
+[data-theme="dark"] .text-emerald-900 { color: #9fe3c4; }
+
+[data-theme="dark"] .text-red-500,
+[data-theme="dark"] .text-red-600 { color: #f08a90; }
+[data-theme="dark"] .text-red-700,
+[data-theme="dark"] .text-red-800 { color: #f6b4b8; }
+
+[data-theme="dark"] .text-amber-600 { color: #f3a64a; }
+[data-theme="dark"] .text-amber-800 { color: #f2b66b; }
+
+[data-theme="dark"] .text-sky-600 { color: #63a8e8; }
+[data-theme="dark"] .text-pink-700 { color: #f0b8d0; }
+[data-theme="dark"] .text-purple-700 { color: #c9b6f0; }
+
+/* --- Conflicting background overrides --- */
+/* White surfaces become dark navy surfaces */
+[data-theme="dark"] .bg-white { background-color: #101d2d !important; }
+[data-theme="dark"] .bg-white\/10 { background-color: rgba(16, 29, 45, 0.92) !important; }
+[data-theme="dark"] .bg-white\/20 { background-color: rgba(16, 29, 45, 0.9) !important; }
+[data-theme="dark"] .bg-white\/90 { background-color: rgba(16, 29, 45, 0.96) !important; }
+[data-theme="dark"] .bg-white\/95 { background-color: rgba(16, 29, 45, 0.98) !important; }
+
+/* Modal / sheet overlays (slate-900 family) become dark overlays */
+[data-theme="dark"] .bg-slate-900 { background-color: #0b1626 !important; }
+[data-theme="dark"] .bg-slate-900\/40 { background-color: rgba(2, 8, 15, 0.55) !important; }
+[data-theme="dark"] .bg-slate-900\/50 { background-color: rgba(2, 8, 15, 0.65) !important; }
+[data-theme="dark"] .bg-slate-900\/60 { background-color: rgba(2, 8, 15, 0.72) !important; }
+[data-theme="dark"] .bg-slate-900\/70 { background-color: rgba(2, 8, 15, 0.78) !important; }
+
+[data-theme="dark"] .bg-slate-950 { background-color: #08111f !important; }
+[data-theme="dark"] .bg-slate-950\/5 { background-color: rgba(8, 17, 31, 0.06) !important; }
+
+/* Translucent light surfaces -> dark translucent */
+[data-theme="dark"] .bg-slate-50\/50 { background-color: rgba(8, 17, 31, 0.5) !important; }
+[data-theme="dark"] .bg-slate-50\/60 { background-color: rgba(8, 17, 31, 0.6) !important; }
+[data-theme="dark"] .bg-slate-50\/70 { background-color: rgba(8, 17, 31, 0.7) !important; }
+[data-theme="dark"] .bg-slate-50\/80 { background-color: rgba(8, 17, 31, 0.8) !important; }
+[data-theme="dark"] .bg-slate-100\/70 { background-color: rgba(11, 22, 38, 0.7) !important; }
+[data-theme="dark"] .bg-slate-200\/80 { background-color: rgba(20, 35, 56, 0.8) !important; }
+
+/* White borders become subtle dark borders */
+[data-theme="dark"] .border-white { border-color: #22344a !important; }
+[data-theme="dark"] .border-white\/10 { border-color: rgba(34, 52, 74, 0.6) !important; }
+
+/* Smooth, flash-free theme transition applied only during a switch */
+.theme-transition,
+.theme-transition *,
+.theme-transition *::before,
+.theme-transition *::after {
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease,
+    box-shadow 180ms ease !important;
+}

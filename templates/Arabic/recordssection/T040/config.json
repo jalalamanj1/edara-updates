@@ -1,0 +1,22 @@
+{
+  "id": "T040",
+  "titleAr": "سجل تسجيل التلاميذ الجدد",
+  "titleEn": "New Student Registration Record",
+  "version": "1.0",
+  "category": "سجلات",
+  "type": "document",
+  "allowAddRows": false,
+  "defaultRows": 0,
+  "sortOrder": 40,
+  "enabled": true,
+  "calculateTotals": false,
+  "cleanUnusedPlaceholders": true,
+  "placeholderKeys": [
+    "academic_year",
+    "city",
+    "principal_name",
+    "school_name",
+    "title"
+  ],
+  "preview": "preview.png"
+}

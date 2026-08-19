@@ -1,0 +1,32 @@
+{
+  "id": "T036",
+  "titleAr": "اللجنة الامتحانية العليا",
+  "titleEn": "Supreme Examination Committee",
+  "version": "1.0",
+  "category": "مخاطبات",
+  "type": "document",
+  "allowAddRows": false,
+  "defaultRows": 0,
+  "sortOrder": 36,
+  "enabled": true,
+  "calculateTotals": false,
+  "cleanUnusedPlaceholders": true,
+  "fieldLabels": {
+    "meetingdate": "تاريخ الاجتماع",
+    "meetingday": "يوم الاجتماع"
+  },
+  "placeholderKeys": [
+    "no",
+    "city",
+    "date",
+    "school_name",
+    "title",
+    "meetingdate",
+    "meetingday",
+    "fullname1",
+    "fullname2",
+    "fullname3",
+    "fullname4"
+  ],
+  "preview": "preview.png"
+}

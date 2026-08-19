@@ -1,0 +1,23 @@
+{
+  "Id": "T034",
+  "TitleAr": "سجل توصيات المشرفين",
+  "TitleEn": "Supervisors Recommendations Record",
+  "Version": "1.0",
+  "Category": "سجلات",
+  "Type": "single",
+  "AllowAddRows": false,
+  "DefaultRows": 0,
+  "SortOrder": 34,
+  "Enabled": true,
+  "CalculateTotals": false,
+  "CleanUnusedPlaceholders": false,
+  "SkipPlaceholders": [],
+  "SkipAdditionalPlaceholders": null,
+  "FieldLabels": {
+    "school_name": "اسم المدرسة",
+    "city": "المحافظة",
+    "date": "التاريخ",
+    "supervisor_name": "اسم المشرف",
+    "principal_name": "اسم المدير"
+  }
+}

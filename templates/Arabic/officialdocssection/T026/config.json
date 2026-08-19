@@ -1,0 +1,165 @@
+{
+  "id": "T026",
+  "titleAr": "جدول مراقبي الساحة",
+  "titleEn": "Yard Supervisors Schedule",
+  "version": "1.0",
+  "category": "مخاطبات",
+  "type": "table",
+  "allowAddRows": false,
+  "defaultRows": 0,
+  "sortOrder": 26,
+  "enabled": true,
+  "calculateTotals": false,
+  "cleanUnusedPlaceholders": false,
+  "skipPlaceholders": [
+    "monname",
+    "tuename",
+    "wedname",
+    "thuname",
+    "sunname",
+    "place"
+  ],
+  "fieldLabels": {
+    "startdate": "تاريخ بداية الأسبوع",
+    "startday": "يوم بداية الأسبوع"
+  },
+  "grids": [
+    {
+      "id": "supervisors",
+      "title": "المراقبون",
+      "addButtonLabel": "",
+      "deleteButtonLabel": "",
+      "height": 350,
+      "defaultRows": 0,
+      "fillEmpty": false,
+      "columns": [
+        {
+          "key": "supervisor",
+          "header": "المشرف",
+          "fillWeight": 12,
+          "readOnly": true
+        },
+        {
+          "key": "monname",
+          "header": "الإثنين",
+          "fillWeight": 16
+        },
+        {
+          "key": "tuename",
+          "header": "الثلاثاء",
+          "fillWeight": 16
+        },
+        {
+          "key": "wedname",
+          "header": "الأربعاء",
+          "fillWeight": 16
+        },
+        {
+          "key": "thuname",
+          "header": "الخميس",
+          "fillWeight": 16
+        },
+        {
+          "key": "sunname",
+          "header": "الجمعة",
+          "fillWeight": 16
+        },
+        {
+          "key": "place",
+          "header": "المكان",
+          "fillWeight": 12
+        }
+      ],
+      "fixedRows": [
+        {
+          "label": "الأول",
+          "placeholders": [
+            "monname1",
+            "tuename1",
+            "wedname1",
+            "thuname1",
+            "sunname1",
+            "place1"
+          ]
+        },
+        {
+          "label": "الثاني",
+          "placeholders": [
+            "monname2",
+            "tuename2",
+            "wedname2",
+            "thuname2",
+            "sunname2",
+            "place2"
+          ]
+        },
+        {
+          "label": "الثالث",
+          "placeholders": [
+            "monname3",
+            "tuename3",
+            "wedname3",
+            "thuname3",
+            "sunname3",
+            "place3"
+          ]
+        },
+        {
+          "label": "الرابع",
+          "placeholders": [
+            "monname4",
+            "tuename4",
+            "wedname4",
+            "thuname4",
+            "sunname4",
+            "place4"
+          ]
+        },
+        {
+          "label": "الخامس",
+          "placeholders": [
+            "monname5",
+            "tuename5",
+            "wedname5",
+            "thuname5",
+            "sunname5",
+            "place5"
+          ]
+        }
+      ]
+    }
+  ],
+  "skipAdditionalPlaceholders": [
+    "monname1",
+    "monname2",
+    "monname3",
+    "monname4",
+    "monname5",
+    "tuename1",
+    "tuename2",
+    "tuename3",
+    "tuename4",
+    "tuename5",
+    "wedname1",
+    "wedname2",
+    "wedname3",
+    "wedname4",
+    "wedname5",
+    "thuname1",
+    "thuname2",
+    "thuname3",
+    "thuname4",
+    "thuname5",
+    "sunname1",
+    "sunname2",
+    "sunname3",
+    "sunname4",
+    "sunname5",
+    "place1",
+    "place2",
+    "place3",
+    "place4",
+    "place5"
+  ],
+  "preview": "preview.png"
+}

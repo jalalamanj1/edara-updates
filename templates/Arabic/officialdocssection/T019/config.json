@@ -1,0 +1,52 @@
+{
+  "id": "T019",
+  "titleAr": "تجهيز أثاث للمدرسة",
+  "titleEn": "Furniture Supplying",
+  "version": "1.0",
+  "category": "مخاطبات",
+  "type": "table",
+  "allowAddRows": true,
+  "defaultRows": 0,
+  "sortOrder": 19,
+  "enabled": true,
+  "calculateTotals": false,
+  "cleanUnusedPlaceholders": false,
+  "fieldLabels": {
+    "item": "الصنف",
+    "qty": "الكمية",
+    "note": "ملاحظة"
+  },
+  "grids": [
+    {
+      "id": "items",
+      "addButtonLabel": "+ إضافة صنف",
+      "deleteButtonLabel": "- حذف",
+      "height": 350,
+      "defaultRows": 0,
+      "fillEmpty": true,
+      "columns": [
+        {
+          "key": "item",
+          "header": "الصنف",
+          "fillWeight": 40
+        },
+        {
+          "key": "qty",
+          "header": "الكمية",
+          "fillWeight": 25
+        },
+        {
+          "key": "note",
+          "header": "ملاحظة",
+          "fillWeight": 35
+        }
+      ]
+    }
+  ],
+  "skipPlaceholders": [
+    "item",
+    "qty",
+    "note"
+  ],
+  "preview": "preview.png"
+}

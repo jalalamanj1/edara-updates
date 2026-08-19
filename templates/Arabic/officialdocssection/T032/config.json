@@ -1,0 +1,117 @@
+{
+  "id": "T032",
+  "titleAr": "مباشرة بعد الغياب",
+  "titleEn": "Attendance After Absence",
+  "version": "1.0",
+  "category": "مخاطبات",
+  "type": "table",
+  "allowAddRows": false,
+  "defaultRows": 0,
+  "sortOrder": 32,
+  "enabled": true,
+  "calculateTotals": false,
+  "cleanUnusedPlaceholders": false,
+  "skipPlaceholders": [
+    "fullname",
+    "jobtitle",
+    "note"
+  ],
+  "fieldLabels": {
+    "startdate": "تاريخ المباشرة",
+    "startday": "يوم المباشرة"
+  },
+  "grids": [
+    {
+      "id": "employees",
+      "title": "الموظفون العائدون من الغياب",
+      "addButtonLabel": "",
+      "deleteButtonLabel": "",
+      "height": 380,
+      "defaultRows": 0,
+      "fillEmpty": false,
+      "columns": [
+        {
+          "key": "emp",
+          "header": "الموظف",
+          "fillWeight": 18,
+          "readOnly": true
+        },
+        {
+          "key": "fullname",
+          "header": "الاسم الرباعي",
+          "fillWeight": 32
+        },
+        {
+          "key": "jobtitle",
+          "header": "اللقب الوظيفي",
+          "fillWeight": 25
+        },
+        {
+          "key": "note",
+          "header": "ملاحظة",
+          "fillWeight": 25
+        }
+      ],
+      "fixedRows": [
+        {
+          "label": "1",
+          "placeholders": [
+            "fullname1",
+            "jobtitle1",
+            "note1"
+          ]
+        },
+        {
+          "label": "2",
+          "placeholders": [
+            "fullname2",
+            "jobtitle2",
+            "note2"
+          ]
+        },
+        {
+          "label": "3",
+          "placeholders": [
+            "fullname3",
+            "jobtitle3",
+            "note3"
+          ]
+        },
+        {
+          "label": "4",
+          "placeholders": [
+            "fullname4",
+            "jobtitle4",
+            "note4"
+          ]
+        },
+        {
+          "label": "5",
+          "placeholders": [
+            "fullname5",
+            "jobtitle5",
+            "note5"
+          ]
+        }
+      ]
+    }
+  ],
+  "skipAdditionalPlaceholders": [
+    "fullname1",
+    "fullname2",
+    "fullname3",
+    "fullname4",
+    "fullname5",
+    "jobtitle1",
+    "jobtitle2",
+    "jobtitle3",
+    "jobtitle4",
+    "jobtitle5",
+    "note1",
+    "note2",
+    "note3",
+    "note4",
+    "note5"
+  ],
+  "preview": "preview.png"
+}

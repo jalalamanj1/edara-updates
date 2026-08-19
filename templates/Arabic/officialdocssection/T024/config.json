@@ -1,0 +1,57 @@
+{
+  "id": "T024",
+  "titleAr": "مباشرة ملاك المدرسة",
+  "titleEn": "School Staff Induction",
+  "version": "1.0",
+  "category": "مخاطبات",
+  "type": "table",
+  "allowAddRows": true,
+  "defaultRows": 0,
+  "sortOrder": 24,
+  "enabled": true,
+  "calculateTotals": false,
+  "cleanUnusedPlaceholders": false,
+  "fieldLabels": {
+    "full_name": "الاسم",
+    "job_title": "المسمى",
+    "notes": "ملاحظات",
+    "admin_order_date": "تاريخ الأمر الإداري",
+    "admin_order_no": "رقم الأمر الإداري",
+    "includes": "يتضمن",
+    "issued_city": "مدينة الإصدار",
+    "starting_date": "تاريخ المباشرة"
+  },
+  "grids": [
+    {
+      "id": "teachers",
+      "addButtonLabel": "+ إضافة معلم",
+      "deleteButtonLabel": "- حذف",
+      "height": 350,
+      "defaultRows": 0,
+      "fillEmpty": true,
+      "columns": [
+        {
+          "key": "full_name",
+          "header": "الاسم",
+          "fillWeight": 35
+        },
+        {
+          "key": "job_title",
+          "header": "المسمى الوظيفي",
+          "fillWeight": 35
+        },
+        {
+          "key": "notes",
+          "header": "ملاحظات",
+          "fillWeight": 30
+        }
+      ]
+    }
+  ],
+  "skipPlaceholders": [
+    "full_name",
+    "job_title",
+    "notes"
+  ],
+  "preview": "preview.png"
+}

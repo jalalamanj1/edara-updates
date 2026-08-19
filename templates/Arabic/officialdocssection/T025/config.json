@@ -1,0 +1,158 @@
+{
+  "id": "T025",
+  "titleAr": "جدول توقيتات الدوام الثنائي",
+  "titleEn": "Double Shift Timetable",
+  "version": "1.0",
+  "category": "مخاطبات",
+  "type": "table",
+  "allowAddRows": false,
+  "defaultRows": 0,
+  "sortOrder": 25,
+  "enabled": true,
+  "calculateTotals": false,
+  "cleanUnusedPlaceholders": false,
+  "skipPlaceholders": [
+    "mfromtime",
+    "mtotime",
+    "efromtime",
+    "etotime"
+  ],
+  "fieldLabels": {
+    "academic_year": "السنة الدراسية"
+  },
+  "grids": [
+    {
+      "id": "timetable",
+      "title": "أوقات الدوام",
+      "addButtonLabel": "",
+      "deleteButtonLabel": "",
+      "height": 420,
+      "defaultRows": 0,
+      "fillEmpty": false,
+      "columns": [
+        {
+          "key": "day",
+          "header": "اليوم",
+          "fillWeight": 15,
+          "readOnly": true
+        },
+        {
+          "key": "mfromtime",
+          "header": "بداية الصباحي",
+          "fillWeight": 20
+        },
+        {
+          "key": "mtotime",
+          "header": "نهاية الصباحي",
+          "fillWeight": 20
+        },
+        {
+          "key": "efromtime",
+          "header": "بداية المسائي",
+          "fillWeight": 20
+        },
+        {
+          "key": "etotime",
+          "header": "نهاية المسائي",
+          "fillWeight": 20
+        }
+      ],
+      "fixedRows": [
+        {
+          "label": "السبت",
+          "placeholders": [
+            "mfromtime1",
+            "mtotime1",
+            "efromtime1",
+            "etotime1"
+          ]
+        },
+        {
+          "label": "الأحد",
+          "placeholders": [
+            "mfromtime2",
+            "mtotime2",
+            "efromtime2",
+            "etotime2"
+          ]
+        },
+        {
+          "label": "الإثنين",
+          "placeholders": [
+            "mfromtime3",
+            "mtotime3",
+            "efromtime3",
+            "etotime3"
+          ]
+        },
+        {
+          "label": "الثلاثاء",
+          "placeholders": [
+            "mfromtime4",
+            "mtotime4",
+            "efromtime4",
+            "etotime4"
+          ]
+        },
+        {
+          "label": "الأربعاء",
+          "placeholders": [
+            "mfromtime5",
+            "mtotime5",
+            "efromtime5",
+            "etotime5"
+          ]
+        },
+        {
+          "label": "الخميس",
+          "placeholders": [
+            "mfromtime6",
+            "mtotime6",
+            "efromtime6",
+            "etotime6"
+          ]
+        },
+        {
+          "label": "الجمعة",
+          "placeholders": [
+            "mfromtime7",
+            "mtotime7",
+            "efromtime7",
+            "etotime7"
+          ]
+        }
+      ]
+    }
+  ],
+  "skipAdditionalPlaceholders": [
+    "mfromtime1",
+    "mfromtime2",
+    "mfromtime3",
+    "mfromtime4",
+    "mfromtime5",
+    "mfromtime6",
+    "mfromtime7",
+    "mtotime1",
+    "mtotime2",
+    "mtotime3",
+    "mtotime4",
+    "mtotime5",
+    "mtotime6",
+    "mtotime7",
+    "efromtime1",
+    "efromtime2",
+    "efromtime3",
+    "efromtime4",
+    "efromtime5",
+    "efromtime6",
+    "efromtime7",
+    "etotime1",
+    "etotime2",
+    "etotime3",
+    "etotime4",
+    "etotime5",
+    "etotime6",
+    "etotime7"
+  ],
+  "preview": "preview.png"
+}

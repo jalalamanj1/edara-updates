@@ -1,0 +1,157 @@
+{
+  "id": "T011",
+  "titleAr": "احصائية تلاميذ",
+  "titleEn": "Pupils Statistics",
+  "version": "1.0",
+  "category": "مخاطبات",
+  "type": "table",
+  "allowAddRows": false,
+  "defaultRows": 0,
+  "sortOrder": 11,
+  "enabled": true,
+  "calculateTotals": false,
+  "cleanUnusedPlaceholders": false,
+  "skipPlaceholders": [
+    "grade",
+    "countmale",
+    "countfemale",
+    "counttotal",
+    "note"
+  ],
+  "grids": [
+    {
+      "id": "statistics",
+      "height": 400,
+      "defaultRows": 7,
+      "fillEmpty": true,
+      "autoCalculateTotal": true,
+      "totalColumnIndex": 3,
+      "columns": [
+        {
+          "key": "className",
+          "header": "الصف",
+          "fillWeight": 18,
+          "readOnly": true
+        },
+        {
+          "key": "countmale",
+          "header": "الذكور",
+          "fillWeight": 25
+        },
+        {
+          "key": "countfemale",
+          "header": "الاناث",
+          "fillWeight": 25
+        },
+        {
+          "key": "counttotal",
+          "header": "المجموع",
+          "fillWeight": 1,
+          "hidden": true
+        },
+        {
+          "key": "note",
+          "header": "الملاحظات",
+          "fillWeight": 32
+        }
+      ],
+      "fixedRows": [
+        {
+          "label": "الاول الابتدائي",
+          "placeholders": [
+            "grade1countmale",
+            "grade1countfemale",
+            "totalgrade1",
+            "notegrade1"
+          ]
+        },
+        {
+          "label": "الثاني الابتدائي",
+          "placeholders": [
+            "grade2countmale",
+            "grade2countfemale",
+            "totalgrade2",
+            "notegrade2"
+          ]
+        },
+        {
+          "label": "الثالث الابتدائي",
+          "placeholders": [
+            "grade3countmale",
+            "grade3countfemale",
+            "totalgrade3",
+            "notegrade3"
+          ]
+        },
+        {
+          "label": "الرابع الابتدائي",
+          "placeholders": [
+            "grade4countmale",
+            "grade4countfemale",
+            "totalgrade4",
+            "notegrade4"
+          ]
+        },
+        {
+          "label": "الخامس الابتدائي",
+          "placeholders": [
+            "grade5countmale",
+            "grade5countfemale",
+            "totalgrade5",
+            "notegrade5"
+          ]
+        },
+        {
+          "label": "السادس الابتدائي",
+          "placeholders": [
+            "grade6countmale",
+            "grade6countfemale",
+            "totalgrade6",
+            "notegrade6"
+          ]
+        },
+        {
+          "label": "المجموع",
+          "placeholders": [
+            "totalcountmale",
+            "totalcountfemale",
+            "totaltotal",
+            "notetotal"
+          ],
+          "hidden": true
+        }
+      ]
+    }
+  ],
+  "skipAdditionalPlaceholders": [
+    "grade1countmale",
+    "grade1countfemale",
+    "totalgrade1",
+    "notegrade1",
+    "grade2countmale",
+    "grade2countfemale",
+    "totalgrade2",
+    "notegrade2",
+    "grade3countmale",
+    "grade3countfemale",
+    "totalgrade3",
+    "notegrade3",
+    "grade4countmale",
+    "grade4countfemale",
+    "totalgrade4",
+    "notegrade4",
+    "grade5countmale",
+    "grade5countfemale",
+    "totalgrade5",
+    "notegrade5",
+    "grade6countmale",
+    "grade6countfemale",
+    "totalgrade6",
+    "notegrade6",
+    "totalcountmale",
+    "totalcountfemale",
+    "totaltotal",
+    "notetotal"
+  ],
+  "preview": "preview.png"
+}

@@ -1,0 +1,18 @@
+{
+  "id": "T008",
+  "titleAr": "صحة صدور وثيقة",
+  "titleEn": "Document Authentication",
+  "version": "1.0",
+  "category": "مخاطبات",
+  "type": "single",
+  "allowAddRows": false,
+  "defaultRows": 0,
+  "sortOrder": 8,
+  "enabled": true,
+  "calculateTotals": false,
+  "cleanUnusedPlaceholders": false,
+  "fieldLabels": {
+    "no3": "عدد الوثيقة"
+  },
+  "preview": "preview.png"
+}

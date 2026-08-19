@@ -1,0 +1,55 @@
+{
+  "id": "T007",
+  "titleAr": "عدم ممانعة قبول طلبة",
+  "titleEn": "No Objection for Students Admission",
+  "version": "1.0",
+  "category": "مخاطبات",
+  "type": "table",
+  "allowAddRows": true,
+  "defaultRows": 5,
+  "sortOrder": 7,
+  "enabled": true,
+  "calculateTotals": false,
+  "cleanUnusedPlaceholders": false,
+  "grids": [
+    {
+      "id": "students",
+      "addButtonLabel": "+ إضافة طالب",
+      "deleteButtonLabel": "− حذف الطالب",
+      "height": 400,
+      "defaultRows": 1,
+      "fillEmpty": true,
+      "columns": [
+        {
+          "key": "studentfullname",
+          "header": "اسم التلميذ الثلاثي",
+          "fillWeight": 50
+        },
+        {
+          "key": "grade",
+          "header": "الصف",
+          "fillWeight": 25
+        },
+        {
+          "key": "birthplace",
+          "header": "التولد",
+          "fillWeight": 25
+        }
+      ]
+    }
+  ],
+  "skipPlaceholders": [
+    "studentfullname",
+    "grade",
+    "birthplace"
+  ],
+  "skipAdditionalPlaceholders": [
+    "studentfullname",
+    "grade",
+    "birthplace",
+    "gstudentfullname",
+    "ggrade",
+    "gbirthplace"
+  ],
+  "preview": "preview.png"
+}

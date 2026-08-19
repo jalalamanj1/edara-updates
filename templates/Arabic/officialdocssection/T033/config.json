@@ -1,0 +1,175 @@
+{
+  "id": "T033",
+  "titleAr": "مباشرة ملاك المدرسة",
+  "titleEn": "School Staff Attendance",
+  "version": "1.0",
+  "category": "مخاطبات",
+  "type": "table",
+  "allowAddRows": false,
+  "defaultRows": 0,
+  "sortOrder": 33,
+  "enabled": true,
+  "calculateTotals": false,
+  "cleanUnusedPlaceholders": false,
+  "skipPlaceholders": [
+    "full_name",
+    "job_title",
+    "notes"
+  ],
+  "fieldLabels": {
+    "admin_order_no": "رقم الأمر الإداري",
+    "admin_order_date": "تاريخ الأمر الإداري",
+    "issued_city": "المحافظة المصدرة",
+    "includes": "يتضمن",
+    "starting_date": "تاريخ المباشرة"
+  },
+  "grids": [
+    {
+      "id": "staff",
+      "title": "ملاك المدرسة المتواجدون",
+      "addButtonLabel": "",
+      "deleteButtonLabel": "",
+      "height": 500,
+      "defaultRows": 0,
+      "fillEmpty": false,
+      "columns": [
+        {
+          "key": "staff",
+          "header": "الموظف",
+          "fillWeight": 12,
+          "readOnly": true
+        },
+        {
+          "key": "full_name",
+          "header": "الاسم الرباعي",
+          "fillWeight": 36
+        },
+        {
+          "key": "job_title",
+          "header": "اللقب الوظيفي",
+          "fillWeight": 28
+        },
+        {
+          "key": "notes",
+          "header": "ملاحظات",
+          "fillWeight": 24
+        }
+      ],
+      "fixedRows": [
+        {
+          "label": "1",
+          "placeholders": [
+            "full_name1",
+            "job_title1",
+            "notes1"
+          ]
+        },
+        {
+          "label": "2",
+          "placeholders": [
+            "full_name2",
+            "job_title2",
+            "notes2"
+          ]
+        },
+        {
+          "label": "3",
+          "placeholders": [
+            "full_name3",
+            "job_title3",
+            "notes3"
+          ]
+        },
+        {
+          "label": "4",
+          "placeholders": [
+            "full_name4",
+            "job_title4",
+            "notes4"
+          ]
+        },
+        {
+          "label": "5",
+          "placeholders": [
+            "full_name5",
+            "job_title5",
+            "notes5"
+          ]
+        },
+        {
+          "label": "6",
+          "placeholders": [
+            "full_name6",
+            "job_title6",
+            "notes6"
+          ]
+        },
+        {
+          "label": "7",
+          "placeholders": [
+            "full_name7",
+            "job_title7",
+            "notes7"
+          ]
+        },
+        {
+          "label": "8",
+          "placeholders": [
+            "full_name8",
+            "job_title8",
+            "notes8"
+          ]
+        },
+        {
+          "label": "9",
+          "placeholders": [
+            "full_name9",
+            "job_title9",
+            "notes9"
+          ]
+        },
+        {
+          "label": "10",
+          "placeholders": [
+            "full_name10",
+            "job_title10",
+            "notes10"
+          ]
+        }
+      ]
+    }
+  ],
+  "skipAdditionalPlaceholders": [
+    "full_name1",
+    "full_name2",
+    "full_name3",
+    "full_name4",
+    "full_name5",
+    "full_name6",
+    "full_name7",
+    "full_name8",
+    "full_name9",
+    "full_name10",
+    "job_title1",
+    "job_title2",
+    "job_title3",
+    "job_title4",
+    "job_title5",
+    "job_title6",
+    "job_title7",
+    "job_title8",
+    "job_title9",
+    "job_title10",
+    "notes1",
+    "notes2",
+    "notes3",
+    "notes4",
+    "notes5",
+    "notes6",
+    "notes7",
+    "notes8",
+    "notes9",
+    "notes10"
+  ],
+  "preview": "preview.png"
+}

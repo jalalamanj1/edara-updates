@@ -1,0 +1,15 @@
+{
+  "id": "T003",
+  "titleAr": "تأييد إستمرارية",
+  "titleEn": "Service Continuation Confirmation",
+  "version": "1.0",
+  "category": "مخاطبات",
+  "type": "single",
+  "allowAddRows": false,
+  "defaultRows": 0,
+  "sortOrder": 3,
+  "enabled": true,
+  "calculateTotals": false,
+  "cleanUnusedPlaceholders": false,
+  "preview": "preview.png"
+}

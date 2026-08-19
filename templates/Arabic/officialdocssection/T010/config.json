@@ -1,0 +1,35 @@
+{
+  "id": "T010",
+  "titleAr": "إستدعاء ولي أمر",
+  "titleEn": "Parent Summons",
+  "version": "1.0",
+  "category": "مخاطبات",
+  "type": "table",
+  "allowAddRows": true,
+  "defaultRows": 8,
+  "sortOrder": 10,
+  "enabled": true,
+  "calculateTotals": false,
+  "cleanUnusedPlaceholders": false,
+  "grids": [
+    {
+      "id": "reasons",
+      "addButtonLabel": "+ إضافة سبب",
+      "deleteButtonLabel": "− حذف السبب",
+      "height": 400,
+      "defaultRows": 1,
+      "fillEmpty": true,
+      "columns": [
+        {
+          "key": "reason",
+          "header": "السبب",
+          "fillWeight": 100
+        }
+      ]
+    }
+  ],
+  "skipPlaceholders": [
+    "reason"
+  ],
+  "preview": "preview.png"
+}

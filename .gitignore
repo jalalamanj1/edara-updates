@@ -1,0 +1,15 @@
+node_modules/
+build/
+dist/
+coverage/
+release/
+server.cjs
+edara_data/
+.DS_Store
+*.log
+.env*
+!.env.example
+cloud_credentials.json
+client_secret_*.json
+edara_config.json
+

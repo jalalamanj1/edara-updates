@@ -1,0 +1,19 @@
+{
+  "id": "T013",
+  "titleAr": "إحالة مرضية للتدريسي",
+  "titleEn": "Medical Referral",
+  "version": "1.0",
+  "category": "مخاطبات",
+  "type": "single",
+  "allowAddRows": false,
+  "defaultRows": 0,
+  "sortOrder": 13,
+  "enabled": true,
+  "calculateTotals": false,
+  "cleanUnusedPlaceholders": false,
+  "fieldLabels": {
+    "place": "العنوان",
+    "teacher_name": "اسم الاستاذ"
+  },
+  "preview": "preview.png"
+}

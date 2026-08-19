@@ -1,0 +1,20 @@
+{
+  "id": "T020",
+  "titleAr": "ترشيح معاون",
+  "titleEn": "Assistant Nomination",
+  "version": "1.0",
+  "category": "مخاطبات",
+  "type": "single",
+  "allowAddRows": false,
+  "defaultRows": 0,
+  "sortOrder": 20,
+  "enabled": true,
+  "calculateTotals": false,
+  "cleanUnusedPlaceholders": false,
+  "fieldLabels": {
+    "person_name": "اسم الشخص",
+    "position": "المنصب",
+    "student_count": "عدد الطلاب"
+  },
+  "preview": "preview.png"
+}
