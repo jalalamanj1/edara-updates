@@ -403,7 +403,7 @@ function generateUUID(): string {
 }
 
 // ---------- Update Checking (GitHub: jalalamanj1/edara-updates) ----------
-const APP_VERSION = '1.0.4';
+const APP_VERSION = '1.0.5';
 const UPDATE_REPO_OWNER = 'jalalamanj1';
 const UPDATE_REPO_NAME = 'edara-updates';
 const UPDATE_CHECK_INTERVAL_MS = 3 * 60 * 60 * 1000;
@@ -457,7 +457,7 @@ async function checkForUpdates(): Promise<UpdateStatus> {
       `https://api.github.com/repos/${UPDATE_REPO_OWNER}/${UPDATE_REPO_NAME}/releases/latest`,
       {
         headers: {
-          'User-Agent': 'EDARA-School-Management/1.0.4',
+          'User-Agent': 'EDARA-School-Management/1.0.5',
           'Accept': 'application/vnd.github+json',
         },
         signal: AbortSignal.timeout(timeoutMs),
@@ -2844,7 +2844,7 @@ async function startServer() {
       const profile = queryOne<any>('SELECT * FROM school_profile LIMIT 1');
       const manifest = {
         app: 'EDARA',
-        version: '1.0.4',
+        version: '1.0.5',
         createdAt: new Date().toISOString(),
         schoolName: profile ? profile.school_name : 'EDARA School',
       };
