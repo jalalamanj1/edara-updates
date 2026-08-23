@@ -729,7 +729,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <span className="font-semibold text-slate-600">الإصدار:</span>
                 <span className="font-mono font-bold text-slate-900 bg-slate-50 px-2.5 py-0.5 rounded border border-slate-200">
-                  {updateStatus?.currentVersion || '1.0.7'}
+                  {updateStatus?.currentVersion || '1.0.8'}
                 </span>
               </div>
 
