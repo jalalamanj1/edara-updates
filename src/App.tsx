@@ -23,6 +23,8 @@ import { SettingsView } from './views/SettingsView';
 import { MailView } from './views/MailView';
 import { CorrespondenceView } from './views/CorrespondenceView';
 import { preloadGovernorateDrive, clearGovernorateDriveCache } from './views/GovernorateDriveView';
+import { startDrivePolling, stopDrivePolling, resetDriveBaseline } from './services/drivePoller';
+import { startNewsPolling, stopNewsPolling, resetNewsBaseline } from './services/newsPoller';
 
 export const App: React.FC = () => {
   const [appStep, setAppStep] = useState<AppStep>('splash');
@@ -313,6 +315,8 @@ export const App: React.FC = () => {
 
   // Handle Logout: end the Supabase session; the device stays registered.
   const handleLogout = async () => {
+    stopDrivePolling();
+    stopNewsPolling();
     await signOut();
     setSchoolProfile(null);
     clearGovernorateDriveCache();
@@ -372,6 +376,31 @@ export const App: React.FC = () => {
       showToast('حدث خطأ أثناء التحديث.', 'error');
     }
   }, [showToast]);
+
+  // ─── Start/stop pollers based on app step ────────────────────────────────
+  useEffect(() => {
+    if (appStep === 'main') {
+      getAccount().then((acct) => {
+        if (acct?.id) {
+          resetDriveBaseline(acct.id);
+          resetNewsBaseline(acct.id);
+        }
+      });
+      startDrivePolling();
+      startNewsPolling();
+    } else {
+      stopDrivePolling();
+      stopNewsPolling();
+    }
+  }, [appStep]);
+
+  // Reset drive baseline on logout (account switch)
+  useEffect(() => {
+    if (appStep === 'login') {
+      resetDriveBaseline('');
+      resetNewsBaseline('');
+    }
+  }, [appStep]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans dir-rtl antialiased flex flex-col overflow-hidden">

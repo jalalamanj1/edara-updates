@@ -23,6 +23,7 @@ import {
   FileSpreadsheet,
   Maximize2,
 } from 'lucide-react';
+import { acknowledgeNewFiles as ackDriveNewFiles, forceDrivePoll } from '../services/drivePoller';
 
 interface GovernorateDriveViewProps {
   onRefreshStats: () => void;
@@ -300,6 +301,10 @@ export const GovernorateDriveView: React.FC<GovernorateDriveViewProps> = ({
       setBreadcrumbs([{ id: config.folderId, name: config.governorateName || 'كتب رسمية' }]);
       // Fetch (will use cache if fresh, refresh in background if stale)
       fetchDriveItems(config.folderId);
+      // Force a poll to sync the poller's baseline with what's shown
+      forceDrivePoll();
+      // Acknowledge new files (user is viewing the folder now)
+      ackDriveNewFiles();
     }
   }, [config?.folderId, fetchDriveItems]);
 

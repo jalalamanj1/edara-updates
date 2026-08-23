@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { SchoolProfile, NavigationTab } from '../types';
 import { normalizeDigits } from '../utils/numberUtils';
 import { mailSync, type MailSyncState } from '../services/mailSync';
+import { subscribeDrivePoller, type DrivePollState } from '../services/drivePoller';
+import { subscribeNewsPoller, type NewsPollState } from '../services/newsPoller';
 import {
   Users,
   BriefcaseBusiness,
@@ -146,6 +148,29 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onNavigate,
   onRefreshStats,
 }) => {
+  const [driveState, setDriveState] = useState<DrivePollState>({
+    fileCount: 0,
+    hasNewFiles: false,
+    knownFileIds: new Set(),
+    lastCheckedAt: null,
+  });
+  const [newsState, setNewsState] = useState<NewsPollState>({
+    hasNewNews: false,
+    knownNewsIds: new Set(),
+    lastCheckedAt: null,
+  });
+
+  useEffect(() => {
+    const unsubDrive = subscribeDrivePoller(setDriveState);
+    const unsubNews = subscribeNewsPoller(setNewsState);
+    return () => {
+      unsubDrive();
+      unsubNews();
+    };
+  }, []);
+
+  const displayCount = driveState.fileCount > 0 ? driveState.fileCount : stats.documentsCount;
+
   return (
     <div className="pb-8 select-none flex flex-col gap-6 lg:h-full">
       {/* Two-column layout: LEFT = messages, RIGHT = stats + news */}
@@ -194,10 +219,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <p className="text-xs text-slate-400 font-medium mt-1">موظف وأستاذ في السجل</p>
             </div>
 
-            {/* Card 3: Official Documents (كتب رسمية) */}
+            {/* Card 3: Official Documents (كتب رسمية) — with live file count and new-file outline */}
             <div
               onClick={() => onNavigate('governorate_drive')}
-              className="bg-white p-6 rounded-2xl border-2 border-blue-500 shadow-xs hover:shadow-md transition-all cursor-pointer group"
+              className={`bg-white p-6 rounded-2xl shadow-xs hover:shadow-md transition-all cursor-pointer group ${
+                driveState.hasNewFiles
+                  ? 'border-2 border-amber-400 ring-2 ring-amber-400/30'
+                  : 'border-2 border-blue-500'
+              }`}
             >
               <div className="flex items-center justify-between mb-4">
                 <span className="text-sm font-bold text-slate-500">كتب رسمية</span>
@@ -206,14 +235,28 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
               </div>
               <div className="text-3xl font-black text-slate-900">
-                {normalizeDigits(stats.documentsCount)}
+                {normalizeDigits(displayCount)}
               </div>
-              <p className="text-xs text-slate-400 font-medium mt-1">كتب رسمية من ملف المحافظة</p>
+              <p className="text-xs text-slate-400 font-medium mt-1">ملف في مجلد المحافظة</p>
+              {driveState.hasNewFiles && (
+                <p className="text-xs text-amber-600 font-bold mt-1.5 flex items-center gap-1">
+                  <span className="inline-block w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                  مستند جديد
+                </p>
+              )}
             </div>
           </div>
 
-          {/* Bottom: Latest News (full width of right column) */}
-          <div className="flex-1 min-h-0">
+          {/* Bottom: Latest News (full width of right column) — with new-news indicator */}
+          <div className="flex-1 min-h-0 relative">
+            {newsState.hasNewNews && (
+              <div className="absolute top-2 left-2 z-10">
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-100 text-amber-800 rounded-full text-[10px] font-bold border border-amber-300 shadow-xs">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  خبر جديد
+                </span>
+              </div>
+            )}
             <LatestNewsCard />
           </div>
         </div>
