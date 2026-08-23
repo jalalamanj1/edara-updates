@@ -3,10 +3,10 @@ import {
   Student,
   Staff,
   SchoolDocument,
-  MinistryDocument,
   BackupHistoryItem,
   DocumentTemplate,
   GeneratedDocument,
+  GovernorateDriveConfig,
 } from '../types';
 
 export interface InitResponse {
@@ -17,7 +17,6 @@ export interface InitResponse {
     studentsCount: number;
     staffCount: number;
     documentsCount: number;
-    ministryDocsCount: number;
     templatesCount?: number;
   };
 }
@@ -370,8 +369,27 @@ export const api = {
     return `/api/documents/download/${id}`;
   },
 
-  // Ministry Documents (Public Google Drive Read-Only)
-  async getMinistryDriveFiles(folderId = '', search = ''): Promise<{
+  // Governorate Drive (Read-Only, Governorate-Scoped)
+  async getGovernorateDriveConfig(): Promise<{
+    success: boolean;
+    config?: GovernorateDriveConfig;
+    message?: string;
+    code?: string;
+  }> {
+    // Send the Supabase auth token so the server can verify the caller
+    const { supabase } = await import('./supabase');
+    let token = '';
+    if (supabase) {
+      const { data } = await supabase.auth.getSession();
+      token = data.session?.access_token || '';
+    }
+    const res = await fetch('/api/governorate-drive/config', {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    return res.json();
+  },
+
+  async getGovernorateDriveFiles(folderId: string, search = ''): Promise<{
     success: boolean;
     items: Array<{
       id: string;
@@ -381,8 +399,6 @@ export const api = {
       size?: number;
       modifiedTime?: string;
       createdTime?: string;
-      docNumber?: string;
-      department?: string;
       downloadUrl?: string;
       viewUrl?: string;
       parentId?: string | null;
@@ -391,26 +407,9 @@ export const api = {
     message?: string;
   }> {
     const params = new URLSearchParams();
-    if (folderId) params.append('folderId', folderId);
+    params.append('folderId', folderId);
     if (search) params.append('search', search);
-    const queryString = params.toString() ? `?${params.toString()}` : '';
-    const res = await fetch(`/api/ministry-drive/files${queryString}`);
-    return res.json();
-  },
-  async getMinistryDriveCount(): Promise<{ success: boolean; count: number; items: Array<{ id: string; isFolder: boolean }>; message?: string }> {
-    const res = await fetch('/api/ministry-drive/count');
-    return res.json();
-  },
-  async getMinistryDriveSeen(): Promise<{ success: boolean; seen: string[] }> {
-    const res = await fetch('/api/ministry-drive/seen');
-    return res.json();
-  },
-  async markMinistryDriveSeen(ids: string[]): Promise<{ success: boolean }> {
-    const res = await fetch('/api/ministry-drive/seen', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids }),
-    });
+    const res = await fetch(`/api/governorate-drive/files?${params.toString()}`);
     return res.json();
   },
 
@@ -450,31 +449,6 @@ export const api = {
   async deleteAdminFile(id: string): Promise<{ success: boolean; message: string }> {
     const res = await fetch(`/api/admin-files/${id}`, { method: 'DELETE' });
     return res.json();
-  },
-
-  async getMinistryDocuments(search = ''): Promise<{ success: boolean; documents: MinistryDocument[] }> {
-    const query = search ? `?search=${encodeURIComponent(search)}` : '';
-    const res = await fetch(`/api/ministry-documents${query}`);
-    return res.json();
-  },
-
-  async createMinistryDocument(formData: FormData): Promise<{ success: boolean; message: string }> {
-    const res = await fetch('/api/ministry-documents', {
-      method: 'POST',
-      body: formData,
-    });
-    return res.json();
-  },
-
-  async deleteMinistryDocument(id: string): Promise<{ success: boolean; message: string }> {
-    const res = await fetch(`/api/ministry-documents/${id}`, {
-      method: 'DELETE',
-    });
-    return res.json();
-  },
-
-  getMinistryDocumentDownloadUrl(id: string): string {
-    return `/api/ministry-documents/download/${id}`;
   },
 
   // Backups & Cloud Accounts
@@ -578,5 +552,65 @@ export const api = {
     } else if (typeof window !== 'undefined') {
       window.open(targetUrl, '_blank', 'noopener,noreferrer');
     }
+  },
+
+  // ---- Correspondence ----
+  async getCorrespondence(): Promise<{ success: boolean; correspondence: any[] }> {
+    const res = await fetch('/api/correspondence');
+    return res.json();
+  },
+
+  async getCorrespondenceById(messageId: string): Promise<{ success: boolean; correspondence?: any }> {
+    const res = await fetch(`/api/correspondence/${encodeURIComponent(messageId)}`);
+    return res.json();
+  },
+
+  async saveCorrespondence(data: {
+    message_id: string;
+    sender_display_name: string;
+    subject: string;
+    description: string;
+    sent_at: string;
+    attachment_name?: string;
+    local_attachment_path?: string;
+  }): Promise<{ success: boolean; id?: string; duplicate?: boolean; message?: string }> {
+    const res = await fetch('/api/correspondence', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return res.json();
+  },
+
+  async saveCorrespondenceAttachment(messageId: string, filename: string, buffer: ArrayBuffer): Promise<{ success: boolean; localPath?: string; filename?: string; message?: string }> {
+    // Convert ArrayBuffer to base64
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const base64 = btoa(binary);
+
+    const res = await fetch('/api/correspondence/attachment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message_id: messageId, filename, buffer: base64 }),
+    });
+    return res.json();
+  },
+
+  async markCorrespondenceRead(messageId: string): Promise<{ success: boolean }> {
+    const res = await fetch(`/api/correspondence/${encodeURIComponent(messageId)}/read`, { method: 'PUT' });
+    return res.json();
+  },
+
+  async openCorrespondenceAttachment(messageId: string): Promise<{ success: boolean; message?: string }> {
+    const res = await fetch(`/api/correspondence/open/${encodeURIComponent(messageId)}`);
+    return res.json();
+  },
+
+  async deleteCorrespondence(messageId: string): Promise<{ success: boolean }> {
+    const res = await fetch(`/api/correspondence/${encodeURIComponent(messageId)}`, { method: 'DELETE' });
+    return res.json();
   },
 };

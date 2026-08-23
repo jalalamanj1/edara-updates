@@ -6,7 +6,7 @@ interface EdaraLogoProps {
   showSubtitle?: boolean;
 }
 
-export const EdaraLogo: React.FC<EdaraLogoProps> = ({
+export const EdaraLogo: React.FC<EdaraLogoProps> = React.memo(({
   className = '',
   size = 'md',
   showSubtitle = true,
@@ -50,4 +50,4 @@ export const EdaraLogo: React.FC<EdaraLogoProps> = ({
       </div>
     </div>
   );
-};
+});

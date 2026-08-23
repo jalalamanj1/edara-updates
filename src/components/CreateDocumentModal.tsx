@@ -9,7 +9,7 @@ import {
   getSubjects,
   isSubjectGridColumn,
 } from '../utils/subjects';
-import { getGradesForSchoolType } from '../services/schoolConfig';
+import { getGradesForSchoolType, isPreparatoryGrade } from '../services/schoolConfig';
 
 interface CreateDocumentModalProps {
   isOpen: boolean;
@@ -85,7 +85,7 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
   );
 
   const initGrid = useCallback(
-    (tpl: DocumentTemplate, grade?: string) => {
+    (tpl: DocumentTemplate, grade?: string, branch?: string) => {
       const cells: Record<string, Record<string, string>> = {};
       const rows: Record<string, number> = {};
       (tpl.grids || []).forEach((g) => {
@@ -101,7 +101,7 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
         }
         const sep = g.rowNumberSeparator || '';
         const hasSubjectCol = g.columns.length > 0 && isSubjectGridColumn(g.columns[0].key);
-        const subjects = hasSubjectCol && grade ? getSubjects(grade) : [];
+        const subjects = hasSubjectCol && grade ? getSubjects(grade, branch) : [];
         const count =
           subjects.length > 0
             ? subjects.length
@@ -152,7 +152,7 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
       }
 
       setValues(initial);
-      initGrid(tpl, defaultGrade);
+      initGrid(tpl, defaultGrade, '');
     },
     [grades, schoolProfile, initGrid]
   );
@@ -172,8 +172,14 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
   const gradeOptions = grades;
 
   const handleGradeChange = (grade: string) => {
-    setValues((prev) => ({ ...prev, grade }));
-    if (selectedTemplate) initGrid(selectedTemplate, grade);
+    const newBranch = isPreparatoryGrade(grade) ? values.branch : '';
+    setValues((prev) => ({ ...prev, grade, branch: newBranch }));
+    if (selectedTemplate) initGrid(selectedTemplate, grade, newBranch);
+  };
+
+  const handleBranchChange = (branch: string) => {
+    setValues((prev) => ({ ...prev, branch }));
+    if (selectedTemplate) initGrid(selectedTemplate, values.grade, branch);
   };
 
   // -------- grid collection (MENTIS CollectGridValues parity) --------
@@ -742,7 +748,6 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
     }
 
     // Dynamic-column grid
-    const hasSubjectCol = g.columns.length > 0 && isSubjectGridColumn(g.columns[0].key);
     const rowCount = gridRows[gridId] || 1;
     return (
       <div key={gridId} className="space-y-2">
@@ -763,10 +768,9 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
                 <tr key={r} className="hover:bg-slate-50/70">
                   {g.columns.map((c) => {
                     const key = `${c.key}${sep}${r + 1}`;
-                    const isSubj = c === g.columns[0] && hasSubjectCol;
                     return (
                       <td key={c.key} className="py-1.5 px-3">
-                        {c.readOnly || isSubj ? (
+                        {c.readOnly ? (
                           <div className="text-center text-slate-700 font-bold min-h-5">
                             {gridCells[gridId]?.[key] || ''}
                           </div>
@@ -901,6 +905,30 @@ export const CreateDocumentModal: React.FC<CreateDocumentModalProps> = ({
                     {fieldsToRender.map((ph) =>
                       renderField(ph, fieldLabels[ph] || ph.replace(/_/g, ' '), ['to', 'date', 'no'].includes(ph))
                     )}
+                  </div>
+                </div>
+              )}
+
+              {/* Branch selector — only for Preparatory (المرحلة الإعدادية) */}
+              {isPreparatoryGrade(values.grade) && (
+                <div className="pt-3 border-t border-slate-100">
+                  <h5 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">
+                    الفرع الدراسي
+                  </h5>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                        الفرع <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={values.branch || ''}
+                        onChange={(e) => handleBranchChange(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 text-sm font-semibold focus:bg-white focus:ring-2 focus:ring-blue-600 focus:outline-none cursor-pointer"
+                      >
+                        <option value="SCIENTIFIC">الفرع العلمي</option>
+                        <option value="LITERARY">الفرع الأدبي</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
               )}

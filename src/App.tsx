@@ -7,7 +7,7 @@ import { RegistrationWindow } from './components/RegistrationWindow';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { ToastContainer } from './components/Toast';
-import { ministryNotifications } from './services/ministryNotifications';
+import { mailSync } from './services/mailSync';
 import { login, signOut, bootstrapFromSession, touchDevice, getAccount } from './services/auth';
 
 // Views
@@ -16,14 +16,25 @@ import { StudentsView } from './views/StudentsView';
 import { StaffView } from './views/StaffView';
 import { DocumentsView } from './views/DocumentsView';
 import { ArchiveView } from './views/ArchiveView';
-import { MinistryDocsView } from './views/MinistryDocsView';
 import { AdminFilesView } from './views/AdminFilesView';
+import { GovernorateDriveView } from './views/GovernorateDriveView';
 import { BackupRestoreView } from './views/BackupRestoreView';
 import { SettingsView } from './views/SettingsView';
+import { MailView } from './views/MailView';
+import { CorrespondenceView } from './views/CorrespondenceView';
+import { preloadGovernorateDrive, clearGovernorateDriveCache } from './views/GovernorateDriveView';
 
 export const App: React.FC = () => {
   const [appStep, setAppStep] = useState<AppStep>('splash');
   const [currentTab, setCurrentTab] = useState<NavigationTab>('dashboard');
+
+  // Navigation handler that supports params (e.g., contactId for mail)
+  const handleNavigate = useCallback((tab: NavigationTab, params?: Record<string, string>) => {
+    if (tab === 'mail' && params) {
+      setMailParams(params);
+    }
+    setCurrentTab(tab);
+  }, []);
 
   const [initData, setInitData] = useState<InitResponse | null>(null);
   const [schoolProfile, setSchoolProfile] = useState<SchoolProfile | null>(null);
@@ -31,8 +42,10 @@ export const App: React.FC = () => {
     studentsCount: 0,
     staffCount: 0,
     documentsCount: 0,
-    ministryDocsCount: 0,
   });
+
+  // Mail navigation params (contactId or messageId from dashboard/notification)
+  const [mailParams, setMailParams] = useState<Record<string, string> | null>(null);
 
   // Toasts
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -50,13 +63,62 @@ export const App: React.FC = () => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  // Keep the Ministry Drive notification poller alive while the app is open,
-  // independent of which tab is active. (No state kept here to avoid re-renders.)
+  // Mail Sync Lifecycle: start polling on login, stop on logout.
+  useEffect(() => {
+    if (appStep !== 'main') {
+      mailSync.stop();
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const account = await getAccount();
+        if (!cancelled && account?.id) {
+          mailSync.start(account.id);
+        }
+      } catch {
+        // ignore — mail sync won't start, user can still use the app
+      }
+    })();
+    return () => {
+      cancelled = true;
+      mailSync.stop();
+    };
+  }, [appStep]);
+
+  // Focus-based immediate sync: when the window regains focus, trigger a sync.
   useEffect(() => {
     if (appStep !== 'main') return;
-    const unsubscribe = ministryNotifications.subscribe(() => {});
-    return () => unsubscribe();
+    const handleFocus = () => mailSync.focusSync();
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
   }, [appStep]);
+
+  // Preload Governorate Drive data in background after entering main app.
+  // Does NOT block startup — fires async and silently caches results.
+  useEffect(() => {
+    if (appStep === 'main') {
+      preloadGovernorateDrive();
+    }
+  }, [appStep]);
+
+  // Notification click handler: navigate to mail and open the specific message.
+  useEffect(() => {
+    const bridge = (window as any).edaraDesktop;
+    if (!bridge?.onNotificationClick) return;
+    const handler = (data: { messageId?: string }) => {
+      if (data?.messageId) {
+        setMailParams({ messageId: data.messageId });
+        setCurrentTab('mail');
+        // Focus the window if it's in the background
+        if (bridge.focusWindow) bridge.focusWindow();
+      }
+    };
+    bridge.onNotificationClick(handler);
+    return () => {
+      if (bridge.offNotificationClick) bridge.offNotificationClick(handler);
+    };
+  }, []);
 
   // Lightweight device heartbeat while the app is open (updates last_seen_at).
   useEffect(() => {
@@ -67,9 +129,10 @@ export const App: React.FC = () => {
   }, [appStep]);
 
   // Fetch / Refresh Stats and Data
-  const refreshAppData = useCallback(async () => {
+  const refreshAppData = useCallback(async (prefetchedData?: InitResponse | null) => {
     try {
-      const data = await api.init();
+      const data = prefetchedData !== undefined ? prefetchedData : await api.init();
+      if (!data) return null;
       setInitData(data);
       if (data.schoolProfile) {
         setSchoolProfile(data.schoolProfile);
@@ -125,16 +188,66 @@ export const App: React.FC = () => {
     };
   }, [showToast]);
 
-  // Merge the Supabase organization account city (governorate) into the local
-  // school profile so documents auto-fill from the authoritative org account.
-  const syncAccountCity = useCallback(async () => {
+  // Sync the Supabase account identity into the local school_profile.
+  //
+  // This is the SINGLE SOURCE OF TRUTH for school identity. The authenticated
+  // edara_accounts record determines:
+  //   - schoolName  ← organization_name
+  //   - city        ← city
+  //   - email       ← email
+  //
+  // If a local school_profile exists, it is OVERWRITTEN with the account data.
+  // If no local school_profile exists, one is CREATED from the account data.
+  //
+  // This runs on EVERY login and splash restore, so the school identity always
+  // matches the authenticated Supabase account. Demo/mock/hardcoded data is
+  // never used as a fallback.
+  const syncAccountToProfile = useCallback(async (): Promise<{ profile: SchoolProfile | null; initData: InitResponse | null }> => {
     try {
       const account = await getAccount();
-      if (account?.city) {
-        setSchoolProfile((prev) => (prev ? { ...prev, city: account.city ?? undefined } : prev));
-      }
-    } catch {
-      /* best-effort; local profile city is the fallback */
+      if (!account) return { profile: null, initData: null };
+
+      // Get the current local profile (may be stale, demo, or empty)
+      const initData = await api.init();
+      const current = initData.schoolProfile;
+
+      // Merge: Supabase account is AUTHORITATIVE for all official organization fields.
+      // Local SQLite only provides user-specific app settings (academicYear, etc.).
+      const merged: SchoolProfile = {
+        id: current?.id || account.id,
+        fullName: current?.fullName || account.organization_name || '',
+        schoolName: account.organization_name || current?.schoolName || '',
+        schoolType: current?.schoolType,
+        city: account.city ?? current?.city,
+        governorate: account.governorate ?? current?.governorate,
+        principalTitle: account.job_title ?? current?.principalTitle,
+        email: account.email ?? current?.email,
+        // Official fields: Supabase is authoritative, fallback to local SQLite
+        phone: account.phone ?? current?.phone ?? '',
+        address: account.address ?? current?.address ?? '',
+        principalName: account.principal_name ?? current?.principalName ?? '',
+        academicYear: current?.academicYear || '',
+        registeredAt: current?.registeredAt || account.created_at || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      // Persist to local SQLite via the registration endpoint (upsert)
+      await api.register({
+        fullName: merged.fullName,
+        schoolName: merged.schoolName,
+        schoolType: merged.schoolType,
+        email: merged.email || undefined,
+        phone: merged.phone,
+        address: merged.address,
+        principalName: merged.principalName,
+        academicYear: merged.academicYear,
+        city: merged.city || undefined,
+      });
+
+      return { profile: merged, initData };
+    } catch (err) {
+      console.error('[App] syncAccountToProfile failed:', err);
+      return { profile: null, initData: null };
     }
   }, []);
 
@@ -145,12 +258,15 @@ export const App: React.FC = () => {
 
   // Handle Splash Screen completion: verify session + device, then route.
   const handleSplashComplete = async () => {
-    await refreshAppData();
     const res = await bootstrapFromSession();
     if (res.ok) {
-      const data = await refreshAppData();
+      // Sync account identity FIRST (writes to local SQLite),
+      // THEN refresh from the (now-correct) local data.
+      // syncAccountToProfile internally calls api.init(), so we reuse that
+      // result instead of calling api.init() a second time via refreshAppData.
+      const { initData } = await syncAccountToProfile();
+      const data = await refreshAppData(initData);
       resolveStepFromRegistration(data?.registered);
-      await syncAccountCity();
       return;
     }
     if (res.error) showToast(res.error, 'error');
@@ -161,9 +277,11 @@ export const App: React.FC = () => {
   const handleLogin = async (email: string, password: string) => {
     const res = await login(email, password);
     if (res.ok) {
-      const data = await refreshAppData();
+      // Sync account identity FIRST (writes to local SQLite),
+      // THEN refresh from the (now-correct) local data.
+      const { initData } = await syncAccountToProfile();
+      const data = await refreshAppData(initData);
       resolveStepFromRegistration(data?.registered);
-      await syncAccountCity();
     }
     return res;
   };
@@ -172,11 +290,26 @@ export const App: React.FC = () => {
   const handleLogout = async () => {
     await signOut();
     setSchoolProfile(null);
+    clearGovernorateDriveCache();
+    // Clear all account-specific localStorage caches
+    try {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('edara_desktop_mail_inbox_') || k.startsWith('edara_desktop_mail_notified_'))) {
+          keysToRemove.push(k);
+        }
+      }
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+    } catch {}
     setAppStep('login');
     showToast('تم تسجيل الخروج بنجاح.', 'info');
   };
 
-  // Handle Registration Success
+  const handleProfileUpdated = useCallback((updated: SchoolProfile) => {
+    setSchoolProfile(updated);
+    refreshAppData();
+  }, [refreshAppData]);
   const handleRegistrationSuccess = (profile: SchoolProfile) => {
     setSchoolProfile(profile);
     showToast('تم تسجيل بيانات المؤسسة بنجاح!', 'success');
@@ -220,7 +353,7 @@ export const App: React.FC = () => {
                   <DashboardView
                     schoolProfile={schoolProfile}
                     stats={stats}
-                    onNavigate={setCurrentTab}
+                    onNavigate={handleNavigate}
                   />
                 )}
 
@@ -243,6 +376,7 @@ export const App: React.FC = () => {
                   <DocumentsView
                     onRefreshStats={refreshAppData}
                     showToast={showToast}
+                    schoolProfile={schoolProfile}
                   />
                 )}
 
@@ -253,18 +387,22 @@ export const App: React.FC = () => {
                   />
                 )}
 
-                {currentTab === 'ministry' && (
-                  <MinistryDocsView
-                    onRefreshStats={refreshAppData}
-                    showToast={showToast}
-                  />
-                )}
-
                 {currentTab === 'admin' && (
                   <AdminFilesView
                     onRefreshStats={refreshAppData}
                     showToast={showToast}
                   />
+                )}
+
+                {currentTab === 'governorate_drive' && (
+                  <GovernorateDriveView
+                    onRefreshStats={refreshAppData}
+                    showToast={showToast}
+                  />
+                )}
+
+                {currentTab === 'mail' && (
+                  <MailView schoolProfile={schoolProfile} mailParams={mailParams} onMailParamsConsumed={() => setMailParams(null)} />
                 )}
 
                 {currentTab === 'backup' && (
@@ -277,10 +415,7 @@ export const App: React.FC = () => {
                 {currentTab === 'settings' && (
                 <SettingsView
                   schoolProfile={schoolProfile}
-                  onProfileUpdated={(updated) => {
-                    setSchoolProfile(updated);
-                    refreshAppData();
-                  }}
+                  onProfileUpdated={handleProfileUpdated}
                   showToast={showToast}
                 />
                 )}

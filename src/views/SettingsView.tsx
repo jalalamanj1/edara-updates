@@ -32,6 +32,7 @@ import {
 
 import { getTheme, setTheme, type ThemeMode } from '../services/theme';
 
+
 interface SettingsViewProps {
   schoolProfile: SchoolProfile | null;
   onProfileUpdated: (updated: SchoolProfile) => void;
@@ -101,6 +102,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       : PRINCIPAL_TITLES[0]
   );
   const [phone, setPhone] = useState(schoolProfile?.phone || '');
+  const [address, setAddress] = useState(schoolProfile?.address || '');
   const [academicYear, setAcademicYear] = useState(schoolProfile?.academicYear || `${currentYear}–${currentYear + 1}`);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -164,6 +166,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           : PRINCIPAL_TITLES[0]
       );
       setPhone(schoolProfile.phone || '');
+      setAddress(schoolProfile.address || '');
       setAcademicYear(schoolProfile.academicYear || `${currentYear}–${currentYear + 1}`);
     }
   }, [schoolProfile]);
@@ -272,23 +275,41 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
     setIsSaving(true);
     try {
+      // 1. Persist official fields to Supabase (authoritative source)
+      const { updateAccountProfile } = await import('../services/auth');
+      const profileResult = await updateAccountProfile({
+        principal_name: principalName.trim(),
+        phone: normalizeDigits(phone.trim()),
+        address: address.trim(),
+        job_title: principalTitle.trim(),
+      });
+
+      if (!profileResult.ok) {
+        showToast(profileResult.error || 'فشل تحديث البيانات الرسمية.', 'error');
+        return;
+      }
+
+      // 2. Update local SQLite cache (for offline fallback)
       const updateData: SchoolProfile = {
         ...schoolProfile,
         principalName: principalName.trim(),
         principalTitle: principalTitle.trim(),
         phone: normalizeDigits(phone.trim()),
+        address: address.trim(),
         academicYear: normalizeDigits(academicYear.trim()),
       };
 
       const res = await api.register(updateData);
       if (res.success && res.schoolProfile) {
         onProfileUpdated(res.schoolProfile);
-        showToast('تم حفظ وتحديث التغييرات بنجاح.', 'success');
+        showToast('تم حفظ التغييرات بنجاح.', 'success');
       } else {
-        showToast(res.message || 'فشل التحديث.', 'error');
+        // Supabase succeeded but local cache failed — still a success
+        onProfileUpdated(updateData);
+        showToast('تم حفظ التغييرات بنجاح.', 'success');
       }
     } catch (err) {
-      showToast('حدث خطأ أثناء الاتصال بالنظام المحلي.', 'error');
+      showToast('حدث خطأ أثناء الاتصال بالنظام.', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -379,13 +400,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <span>بيانات المدرسة</span>
             </h3>
             <p className="text-slate-500 text-xs mt-1 font-medium">
-              يمكنك تحديث اسم المدير، صفة المدير، رقم الهاتف، والسنة الدراسية الحالية. لا يمكن تعديل المحافظة ونوع المدرسة بعد التسجيل.
+              يمكنك تعديل بيانات المدير والهاتف والعنوان وصفة المدير. البيانات تُحفظ مباشرة في نظام الحسابات.
             </p>
           </div>
 
           <form onSubmit={handleSaveEditableFields} className="max-w-2xl">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-6">
-              {/* Field 1: اسم المدير / المدير العام (العمود الأيمن - الصف الأول) */}
+              {/* اسم المدير / المدير العام — editable */}
               <div>
                 <label className="block text-sm font-bold text-slate-800 mb-1.5">
                   اسم المدير / المدير العام <span className="text-red-500">*</span>
@@ -402,7 +423,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
               </div>
 
-              {/* Field 3: رقم الهاتف (العمود الأيسر - الصف الأول) */}
+              {/* رقم الهاتف — editable */}
               <div>
                 <label className="block text-sm font-bold text-slate-800 mb-1.5">
                   رقم الهاتف <span className="text-red-500">*</span>
@@ -419,7 +440,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
               </div>
 
-              {/* Field 2: صفة المدير (العمود الأيمن - الصف الثاني) */}
+              {/* صفة المدير — editable (structured selector) */}
               <div>
                 <label className="block text-sm font-bold text-slate-800 mb-1.5">
                   صفة المدير
@@ -439,11 +460,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <UserCheck className="w-4 h-4 text-slate-400 absolute right-3.5 top-3.5 pointer-events-none" />
                 </div>
                 <p className="text-xs text-slate-400 font-medium mt-1.5">
-                  تُستخدم صفة المدير داخل قوالب المستندات (مدير المدرسة أو مديرة المدرسة).
+                  تُستخدم صفة المدير داخل قوالب المستندات.
                 </p>
               </div>
 
-              {/* Field 4: السنة الدراسية الحالية (العمود الأيسر - الصف الثاني) */}
+              {/* العنوان — editable */}
+              <div>
+                <label className="block text-sm font-bold text-slate-800 mb-1.5">
+                  العنوان
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    placeholder="عنوان المدرسة"
+                    className="w-full px-4 py-3 pr-10 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 text-sm font-semibold focus:bg-white focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                  />
+                  <MapPin className="w-4 h-4 text-slate-400 absolute right-3.5 top-3.5 pointer-events-none" />
+                </div>
+              </div>
+
+              {/* السنة الدراسية — editable (local user preference) */}
               <div>
                 <label className="block text-sm font-bold text-slate-800 mb-1.5">
                   السنة الدراسية الحالية <span className="text-red-500">*</span>
@@ -462,26 +500,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </select>
                   <Calendar className="w-4 h-4 text-slate-400 absolute right-3.5 top-3.5 pointer-events-none" />
                 </div>
-              </div>
-
-              {/* Field: المحافظة (read-only after registration) */}
-              <div>
-                <label className="block text-sm font-bold text-slate-800 mb-1.5">
-                  المحافظة
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={schoolProfile?.city || '—'}
-                    readOnly
-                    disabled
-                    className="w-full px-4 py-3 pr-10 rounded-xl border border-slate-200 bg-slate-100 text-slate-500 text-sm font-semibold cursor-not-allowed"
-                  />
-                  <MapPin className="w-4 h-4 text-slate-400 absolute right-3.5 top-3.5 pointer-events-none" />
-                </div>
-                <p className="text-xs text-slate-400 font-medium mt-1.5">
-                  تُحدد المحافظة عند التسجيل ولا يمكن تعديلها لاحقاً. تُعبّأ تلقائياً في المستندات.
-                </p>
               </div>
             </div>
 
@@ -709,7 +727,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <span className="font-semibold text-slate-600">الإصدار:</span>
                 <span className="font-mono font-bold text-slate-900 bg-slate-50 px-2.5 py-0.5 rounded border border-slate-200">
-                  {updateStatus?.currentVersion || '1.0.0'}
+                  {updateStatus?.currentVersion || '1.0.2'}
                 </span>
               </div>
 
@@ -830,7 +848,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               [
                 { key: 'light', label: 'فاتح', icon: Sun, desc: 'المظهر الفاتح الحالي لنظام Edara.' },
                 { key: 'dark', label: 'داكن', icon: Moon, desc: 'مظهر داكن احترافي يناسب بيئات العمل.' },
-                { key: 'system', label: 'تلقائي', icon: Monitor, desc: 'يتبع إعداد النظام (فاتح أو داكن).' },
+                { key: 'system', label: 'تلقائي', icon: Monitor, desc: 'يتبع الوقت المحلي (فاتح ٦ صباحاً–٦ مساءً، داكن الباقي).' },
               ] as const
             ).map((opt) => {
               const Icon = opt.icon;

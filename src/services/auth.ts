@@ -10,7 +10,7 @@ import type { Account, AccountType, DeviceStatus } from '../types';
 // ----------------------------------------------------------------------------
 
 const DEVICE_ID_KEY = 'edara_device_id';
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.0.2';
 
 export type { Account, AccountType, DeviceStatus };
 
@@ -129,6 +129,57 @@ export async function updateAccountCity(city: string): Promise<{ ok: boolean; er
     .eq('auth_user_id', uid);
   if (error) {
     console.error('[auth] updateAccountCity failed:', error.message);
+    return { ok: false, error: error.message };
+  }
+  return { ok: true };
+}
+
+export async function updateAccountOrganizationName(name: string): Promise<{ ok: boolean; error?: string }> {
+  if (!supabase) return { ok: false, error: MSG_NOT_CONFIGURED };
+  const { data: userData } = await supabase.auth.getUser();
+  const uid = userData.user?.id;
+  if (!uid) return { ok: false, error: MSG_GENERIC };
+  const { error } = await supabase
+    .from('edara_accounts')
+    .update({ organization_name: name || null, updated_at: new Date().toISOString() })
+    .eq('auth_user_id', uid);
+  if (error) {
+    console.error('[auth] updateAccountOrganizationName failed:', error.message);
+    return { ok: false, error: error.message };
+  }
+  return { ok: true };
+}
+
+/**
+ * Update official organization profile fields in Supabase.
+ * Only updates the fields passed in `fields`. Protected fields (school_name,
+ * governorate, city, account_type, etc.) are never sent.
+ */
+export async function updateAccountProfile(fields: {
+  principal_name?: string;
+  phone?: string;
+  address?: string;
+  job_title?: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  if (!supabase) return { ok: false, error: MSG_NOT_CONFIGURED };
+  const { data: userData } = await supabase.auth.getUser();
+  const uid = userData.user?.id;
+  if (!uid) return { ok: false, error: MSG_GENERIC };
+
+  // Build update payload — only include defined fields
+  const payload: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (fields.principal_name !== undefined) payload.principal_name = fields.principal_name || null;
+  if (fields.phone !== undefined) payload.phone = fields.phone || null;
+  if (fields.address !== undefined) payload.address = fields.address || null;
+  if (fields.job_title !== undefined) payload.job_title = fields.job_title || null;
+
+  const { error } = await supabase
+    .from('edara_accounts')
+    .update(payload)
+    .eq('auth_user_id', uid);
+
+  if (error) {
+    console.error('[auth] updateAccountProfile failed:', error.message);
     return { ok: false, error: error.message };
   }
   return { ok: true };

@@ -14,7 +14,7 @@ export const Header: React.FC<HeaderProps> = ({ schoolProfile, onLogout }) => {
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(new Date());
-    }, 1000);
+    }, 30000);
 
     return () => clearInterval(timer);
   }, []);

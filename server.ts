@@ -1,15 +1,21 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { execFileSync, execFile } from 'child_process';
-import { createServer as createViteServer } from 'vite';
+// NOTE: `vite` is only used in the dev server branch below. It is imported
+// lazily (dynamic import) there so that the production bundle never requires
+// `vite` at load time (vite is a devDependency and is pruned from the package).
 import initSqlJs, { Database } from 'sql.js';
 import multer from 'multer';
 import JSZip from 'jszip';
 import * as XLSX from 'xlsx';
 import { APP_CONFIG, extractFolderId } from './src/config/appConfig';
 import { createCloudService } from './cloudBackupService';
+import { createClient } from '@supabase/supabase-js';
 
 const PORT = 3000;
 const app = express();
@@ -40,6 +46,8 @@ const MINISTRY_DOCS_DIR = path.join(DATA_DIR, 'ministry_documents');
 const BACKUPS_DIR = path.join(DATA_DIR, 'backups');
 const TEMPLATES_DIR = path.join(DATA_DIR, 'templates');
 const OUTGOING_DIR = path.join(DATA_DIR, 'outgoing');
+const MAIL_ATTACHMENTS_DIR = path.join(DATA_DIR, 'mail_attachments');
+const CORRESPONDENCE_DIR = path.join(DATA_DIR, 'correspondence');
 const DB_PATH = path.join(DATA_DIR, 'edara.db');
 
 // Resolve the user's real Desktop (honors OneDrive Known-Folder redirection on Windows)
@@ -63,7 +71,7 @@ function getDesktopPath(): string {
 const EXPORT_FOLDER = path.join(getDesktopPath(), 'Edara الصادرات');
 
 // Ensure directories exist
-[DATA_DIR, DOCS_DIR, MINISTRY_DOCS_DIR, BACKUPS_DIR, TEMPLATES_DIR, OUTGOING_DIR, EXPORT_FOLDER].forEach((dir) => {
+[DATA_DIR, DOCS_DIR, MINISTRY_DOCS_DIR, BACKUPS_DIR, TEMPLATES_DIR, OUTGOING_DIR, MAIL_ATTACHMENTS_DIR, CORRESPONDENCE_DIR, EXPORT_FOLDER].forEach((dir) => {
   if (!fs.existsSync(dir)) {
     try {
       fs.mkdirSync(dir, { recursive: true });
@@ -250,6 +258,56 @@ async function initDatabase() {
       key TEXT PRIMARY KEY,
       value TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS mail_messages (
+      id TEXT PRIMARY KEY,
+      remote_id INTEGER,
+      account_id TEXT,
+      folder TEXT NOT NULL DEFAULT 'inbox',
+      sender_organization_type TEXT,
+      sender_organization_id TEXT,
+      sender_org_name TEXT,
+      recipient_type TEXT,
+      recipient_organization_id TEXT,
+      recipient_org_name TEXT,
+      subject TEXT,
+      body TEXT,
+      status TEXT,
+      created_at TEXT,
+      updated_at TEXT,
+      local_read INTEGER NOT NULL DEFAULT 0,
+      raw TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS mail_attachments (
+      id TEXT PRIMARY KEY,
+      message_id TEXT,
+      filename TEXT,
+      size INTEGER,
+      mime_type TEXT,
+      remote_url TEXT,
+      local_file_path TEXT,
+      state TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS mail_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS correspondence (
+      id TEXT PRIMARY KEY,
+      message_id TEXT UNIQUE NOT NULL,
+      sender_display_name TEXT,
+      subject TEXT,
+      description TEXT,
+      sent_at TEXT,
+      attachment_name TEXT,
+      local_attachment_path TEXT,
+      is_read INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
   `);
 
   // Migration: school profile extra columns (MENTIS parity)
@@ -258,6 +316,47 @@ async function initDatabase() {
   if (!profileColNames.includes('city')) db.run(`ALTER TABLE school_profile ADD COLUMN city TEXT`);
   if (!profileColNames.includes('principal_title')) db.run(`ALTER TABLE school_profile ADD COLUMN principal_title TEXT`);
   if (!profileColNames.includes('school_type')) db.run(`ALTER TABLE school_profile ADD COLUMN school_type TEXT`);
+  if (!profileColNames.includes('remote_org_id')) db.run(`ALTER TABLE school_profile ADD COLUMN remote_org_id TEXT`);
+
+  // Migration: mail_messages remote id + updated_at
+  const msgCols = db.exec(`PRAGMA table_info(mail_messages)`);
+  const msgColNames = msgCols.length > 0 ? msgCols[0].values.map((v: any) => v[1]) : [];
+  if (msgColNames.length && !msgColNames.includes('remote_id')) {
+    db.run(`ALTER TABLE mail_messages ADD COLUMN remote_id INTEGER`);
+    db.run(`ALTER TABLE mail_messages ADD COLUMN updated_at TEXT`);
+  }
+  // Migration: account-scoped inbox — bind every message to the Edara Desktop
+  // account (edara_accounts.id) that owns this installation's private inbox.
+  if (msgColNames.length && !msgColNames.includes('account_id')) {
+    db.run(`ALTER TABLE mail_messages ADD COLUMN account_id TEXT`);
+  }
+
+  // Migration: mail_attachments.message_id must be nullable (uploaded before a message exists)
+  const attInfo = db.exec(`PRAGMA table_info(mail_attachments)`);
+  const attCols = attInfo.length > 0 ? attInfo[0].values : [];
+  const attMsgCol = attCols.find((c: any) => c[1] === 'message_id');
+  if (attMsgCol && attMsgCol[3] === 1) {
+    db.run(`ALTER TABLE mail_attachments RENAME TO mail_attachments_old`);
+    db.run(`CREATE TABLE mail_attachments (
+      id TEXT PRIMARY KEY,
+      message_id TEXT,
+      filename TEXT,
+      size INTEGER,
+      mime_type TEXT,
+      remote_url TEXT,
+      local_file_path TEXT,
+      state TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT
+    )`);
+    db.run(`INSERT INTO mail_attachments (id, message_id, filename, size, mime_type, remote_url, local_file_path, state, created_at)
+            SELECT id, message_id, filename, size, mime_type, remote_url, local_file_path, state, created_at FROM mail_attachments_old`);
+    db.run(`DROP TABLE mail_attachments_old`);
+  }
+
+  // Migration: student branch (الفرع) for preparatory stage
+  const studentCols = db.exec(`PRAGMA table_info(students)`);
+  const studentColNames = studentCols.length > 0 ? studentCols[0].values.map((v: any) => v[1]) : [];
+  if (!studentColNames.includes('branch')) db.run(`ALTER TABLE students ADD COLUMN branch TEXT`);
 
   // Migration: cloud backup account tokens
   const accCols = db.exec(`PRAGMA table_info(backup_accounts)`);
@@ -304,7 +403,7 @@ function generateUUID(): string {
 }
 
 // ---------- Update Checking (GitHub: jalalamanj1/edara-updates) ----------
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.0.2';
 const UPDATE_REPO_OWNER = 'jalalamanj1';
 const UPDATE_REPO_NAME = 'edara-updates';
 const UPDATE_CHECK_INTERVAL_MS = 3 * 60 * 60 * 1000;
@@ -358,7 +457,7 @@ async function checkForUpdates(): Promise<UpdateStatus> {
       `https://api.github.com/repos/${UPDATE_REPO_OWNER}/${UPDATE_REPO_NAME}/releases/latest`,
       {
         headers: {
-          'User-Agent': 'EDARA-School-Management/1.0.0',
+          'User-Agent': 'EDARA-School-Management/1.0.2',
           'Accept': 'application/vnd.github+json',
         },
         signal: AbortSignal.timeout(timeoutMs),
@@ -418,15 +517,36 @@ async function startServer() {
   // Cloud backup service (Google Drive / OneDrive OAuth + upload)
   const cloudService = createCloudService({ queryOne, queryAll, execute, generateUUID });
 
+  // Supabase client (anon key) for governorate drive folder resolution
+  const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
+  const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || '';
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+  const supabaseClient = supabaseUrl && supabaseAnonKey
+    ? createClient(supabaseUrl, supabaseAnonKey)
+    : null;
+  // Service-role client bypasses RLS for shared config tables (cities, city_drive_folders).
+  // Used ONLY for read-only configuration lookups — never exposed to the browser.
+  const supabaseAdmin = supabaseUrl && supabaseServiceKey
+    ? createClient(supabaseUrl, supabaseServiceKey)
+    : null;
+
+  // Health check endpoint for readiness verification
+  app.get('/api/health', (_req, res) => {
+    res.json({ status: 'ok' });
+  });
+
   // 1. App Initialization State
   app.get('/api/init', (req, res) => {
     try {
       const profile = queryOne<any>('SELECT * FROM school_profile LIMIT 1');
 
-      const studentsCountRow = queryOne<any>('SELECT COUNT(*) as cnt FROM students');
-      const staffCountRow = queryOne<any>('SELECT COUNT(*) as cnt FROM staff');
-      const docsCountRow = queryOne<any>('SELECT COUNT(*) as cnt FROM export_log');
-      const minDocsCountRow = queryOne<any>('SELECT COUNT(*) as cnt FROM ministry_documents');
+      // Single combined query for all counts instead of 3 separate queries
+      const countsRow = queryOne<any>(
+        `SELECT
+          (SELECT COUNT(*) FROM students) as students_count,
+          (SELECT COUNT(*) FROM staff) as staff_count,
+          (SELECT COUNT(*) FROM export_log) as docs_count`
+      );
 
       const registered = !!profile && !!profile.school_name;
 
@@ -451,10 +571,9 @@ async function startServer() {
             }
           : null,
         stats: {
-          studentsCount: studentsCountRow ? Number(studentsCountRow.cnt) : 0,
-          staffCount: staffCountRow ? Number(staffCountRow.cnt) : 0,
-          documentsCount: docsCountRow ? Number(docsCountRow.cnt) : 0,
-          ministryDocsCount: minDocsCountRow ? Number(minDocsCountRow.cnt) : 0,
+          studentsCount: countsRow ? Number(countsRow.students_count) : 0,
+          staffCount: countsRow ? Number(countsRow.staff_count) : 0,
+          documentsCount: countsRow ? Number(countsRow.docs_count) : 0,
         },
       });
     } catch (err: any) {
@@ -593,6 +712,7 @@ async function startServer() {
         gender: r.gender,
         dob: r.dob,
         grade: r.grade,
+        branch: r.branch || '',
         phone: r.phone,
         parentName: r.parent_name,
         parentPhone: r.parent_phone,
@@ -610,7 +730,7 @@ async function startServer() {
 
   app.post('/api/students', (req, res) => {
     try {
-      const { fullName, gender, dob, grade, phone, parentName, parentPhone, address, notes } = req.body;
+      const { fullName, gender, dob, grade, phone, parentName, parentPhone, address, notes, branch } = req.body;
 
       if (!fullName || !fullName.trim()) return res.status(400).json({ success: false, message: 'اسم الطالب مطلوب.' });
       if (!gender) return res.status(400).json({ success: false, message: 'الجنس مطلوب.' });
@@ -626,7 +746,7 @@ async function startServer() {
       const now = new Date().toISOString();
 
       execute(
-        `INSERT INTO students (id, student_code, full_name, gender, dob, grade, phone, parent_name, parent_phone, address, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO students (id, student_code, full_name, gender, dob, grade, branch, phone, parent_name, parent_phone, address, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id,
           studentCode,
@@ -634,6 +754,7 @@ async function startServer() {
           gender,
           dob || '',
           grade.trim(),
+          (branch || '').trim(),
           phone.trim(),
           parentName.trim(),
           parentPhone.trim(),
@@ -653,18 +774,19 @@ async function startServer() {
   app.put('/api/students/:id', (req, res) => {
     try {
       const { id } = req.params;
-      const { fullName, gender, dob, grade, phone, parentName, parentPhone, address, notes } = req.body;
+      const { fullName, gender, dob, grade, phone, parentName, parentPhone, address, notes, branch } = req.body;
 
       if (!fullName || !fullName.trim()) return res.status(400).json({ success: false, message: 'اسم الطالب مطلوب.' });
 
       const now = new Date().toISOString();
       execute(
-        `UPDATE students SET full_name = ?, gender = ?, dob = ?, grade = ?, phone = ?, parent_name = ?, parent_phone = ?, address = ?, notes = ?, updated_at = ? WHERE id = ?`,
+        `UPDATE students SET full_name = ?, gender = ?, dob = ?, grade = ?, branch = ?, phone = ?, parent_name = ?, parent_phone = ?, address = ?, notes = ?, updated_at = ? WHERE id = ?`,
         [
           fullName.trim(),
           gender,
           dob || '',
           grade.trim(),
+          (branch || '').trim(),
           phone.trim(),
           parentName.trim(),
           parentPhone.trim(),
@@ -727,6 +849,7 @@ async function startServer() {
         const gender = item.gender || 'ذكر';
         const dob = item.dob || '';
         const grade = item.grade || 'غير محدد';
+        const branch = item.branch || '';
         const phone = item.phone || '';
         const parentName = item.parentName || '';
         const parentPhone = item.parentPhone || '';
@@ -734,8 +857,8 @@ async function startServer() {
         const notes = item.notes || '';
 
         execute(
-          `INSERT INTO students (id, student_code, full_name, gender, dob, grade, phone, parent_name, parent_phone, address, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [id, code, fullName, gender, dob, grade, phone, parentName, parentPhone, address, notes, now, now]
+          `INSERT INTO students (id, student_code, full_name, gender, dob, grade, branch, phone, parent_name, parent_phone, address, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [id, code, fullName, gender, dob, grade, branch, phone, parentName, parentPhone, address, notes, now, now]
         );
         importedCount++;
       }
@@ -1534,7 +1657,7 @@ async function startServer() {
 
   // Helper function to discover document templates (MENTIS config.json folders + flat .docx)
   async function discoverTemplates() {
-    const dirs = [TEMPLATES_DIR, path.join(process.cwd(), 'templates')];
+      const dirs = [TEMPLATES_DIR, process.env.EDARA_TEMPLATES_DIR || path.join(process.cwd(), 'templates')];
     const foundTemplates: any[] = [];
     const seen = new Set<string>();
 
@@ -2160,249 +2283,225 @@ async function startServer() {
     }
   });
 
-  // Helper to fetch live items from public Google Drive folder
-  async function fetchGoogleDrivePublicFolder(targetFolderId: string) {
-    // Strategy 1: Fetch via Google Drive embedded folderview
-    try {
-      const embeddedUrl = `https://drive.google.com/embeddedfolderview?id=${targetFolderId}`;
-      const res = await fetch(embeddedUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-          'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
-        }
+  // Google Apps Script Web App URL (read once at startup)
+  const GOOGLE_APPS_SCRIPT_URL = process.env.GOOGLE_APPS_SCRIPT_URL || '';
+
+  // Helper to fetch files from Google Drive via Apps Script Web App
+  async function fetchFromAppsScript(targetFolderId: string) {
+    if (!GOOGLE_APPS_SCRIPT_URL) {
+      throw new Error('GOOGLE_APPS_SCRIPT_URL is not configured.');
+    }
+
+    const appsScriptUrl = GOOGLE_APPS_SCRIPT_URL + '?action=list&folderId=' + encodeURIComponent(targetFolderId);
+
+    const res = await fetch(appsScriptUrl);
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      console.error('[GOV DRIVE] HTTP ' + res.status, body.substring(0, 300));
+      throw new Error('Google Apps Script returned HTTP ' + res.status);
+    }
+
+    const json: any = await res.json();
+
+    if (!json.success) {
+      console.error('[GOV DRIVE] Apps Script error:', json.error, json.message);
+      throw new Error(json.message || 'Apps Script returned error: ' + json.error);
+    }
+
+    // Merge files + folders into a single items array matching the existing API shape
+    const items: any[] = [];
+
+    for (const f of (json.folders || [])) {
+      items.push({
+        id:           f.id,
+        name:         f.name,
+        mimeType:     f.mimeType || 'application/vnd.google-apps.folder',
+        isFolder:     true,
+        parentId:     targetFolderId,
+        size:         0,
+        createdTime:  f.createdTime,
+        modifiedTime: f.modifiedTime,
+        downloadUrl:  undefined,
+        viewUrl:      f.webViewLink || ('https://drive.google.com/drive/folders/' + f.id),
       });
-
-      if (res.ok) {
-        const html = await res.text();
-        const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
-        let folderName = titleMatch ? titleMatch[1].trim() : 'المجلد الرئيسي';
-        if (folderName.toLowerCase() === 'google drive' || folderName.toLowerCase() === 'drive') {
-          folderName = 'المجلد الرئيسي';
-        }
-
-        const matches = [...html.matchAll(/id="entry-([^"]+)"/g)];
-        if (matches.length > 0) {
-          const items: any[] = [];
-          for (const m of matches) {
-            const id = m[1];
-            const entryStart = html.indexOf(`id="entry-${id}"`);
-            const entryChunk = html.substring(entryStart, entryStart + 1800);
-
-            const titleM = entryChunk.match(/<div class="flip-entry-title">([^<]+)<\/div>/i);
-            const title = titleM ? titleM[1].trim() : id;
-
-            const isFolder = entryChunk.includes('/drive/folders/') || 
-                             entryChunk.includes('embeddedfolderview?id=') || 
-                             entryChunk.includes('type/folder') ||
-                             entryChunk.includes('alt="Folder"') ||
-                             entryChunk.includes('alt="مجلد"');
-
-            const modM = entryChunk.match(/<div class="flip-entry-last-modified"><div>([^<]+)<\/div><\/div>/i);
-            const modifiedTime = modM ? modM[1].trim() : undefined;
-
-            let mimeType = isFolder ? 'application/vnd.google-apps.folder' : 'application/octet-stream';
-            const lowerTitle = title.toLowerCase();
-            if (lowerTitle.endsWith('.pdf')) mimeType = 'application/pdf';
-            else if (lowerTitle.endsWith('.jpg') || lowerTitle.endsWith('.jpeg')) mimeType = 'image/jpeg';
-            else if (lowerTitle.endsWith('.png')) mimeType = 'image/png';
-            else if (lowerTitle.endsWith('.gif')) mimeType = 'image/gif';
-            else if (lowerTitle.endsWith('.docx') || lowerTitle.endsWith('.doc')) mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-            else if (lowerTitle.endsWith('.xlsx') || lowerTitle.endsWith('.xls')) mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-            else if (lowerTitle.endsWith('.pptx') || lowerTitle.endsWith('.ppt')) mimeType = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
-            else if (lowerTitle.endsWith('.txt')) mimeType = 'text/plain';
-            else if (lowerTitle.endsWith('.mp4')) mimeType = 'video/mp4';
-            else if (lowerTitle.endsWith('.zip')) mimeType = 'application/zip';
-
-            items.push({
-              id,
-              name: title,
-              mimeType,
-              isFolder,
-              parentId: targetFolderId,
-              modifiedTime,
-              downloadUrl: isFolder ? undefined : `https://drive.google.com/uc?export=download&id=${id}`,
-              viewUrl: isFolder ? `https://drive.google.com/drive/folders/${id}` : `https://drive.google.com/file/d/${id}/view`,
-            });
-          }
-
-          return { items, folderName };
-        }
-      }
-    } catch (err: any) {
-      console.warn('[Ministry Drive API] embeddedfolderview attempt warning:', err?.message || err);
     }
 
-    // Strategy 2: Fallback to drive/folders HTML parsing
-    const url = `https://drive.google.com/drive/folders/${targetFolderId}`;
-    
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error(`Google Drive HTTP Error ${response.status}`);
-    }
-
-    const html = await response.text();
-    const itemsMap = new Map<string, any>();
-    let folderName = 'المجلد الرئيسي';
-
-    const callbackRegex = /AF_initDataCallback\(\{key:\s*'ds:([^']+)',\s*hash:\s*'([^']+)',\s*data:(.+?),\s*sideChannel:\s*\{\}\}\);/g;
-    let match: RegExpExecArray | null;
-
-    while ((match = callbackRegex.exec(html)) !== null) {
-      try {
-        const data = JSON.parse(match[3]);
-
-        function traverse(node: any) {
-          if (!node) return;
-          if (Array.isArray(node)) {
-            // Folder title check
-            if (node[0] === targetFolderId && typeof node[2] === 'string' && node[3] === 'application/vnd.google-apps.folder') {
-              folderName = node[2];
-            }
-
-            // Child items check
-            if (
-              typeof node[0] === 'string' &&
-              node[0].length >= 20 &&
-              node[0] !== targetFolderId &&
-              typeof node[2] === 'string' &&
-              node[2].trim().length > 0 &&
-              typeof node[3] === 'string' &&
-              (node[3].startsWith('application/') || node[3].startsWith('image/') || node[3].startsWith('text/') || node[3].startsWith('video/') || node[3].startsWith('audio/'))
-            ) {
-              const id = node[0];
-              const name = node[2];
-              const mimeType = node[3];
-              const isFolder = mimeType === 'application/vnd.google-apps.folder';
-
-              if (!itemsMap.has(id)) {
-                itemsMap.set(id, {
-                  id,
-                  name,
-                  mimeType,
-                  isFolder,
-                  parentId: targetFolderId,
-                  downloadUrl: isFolder ? undefined : `https://drive.google.com/uc?export=download&id=${id}`,
-                  viewUrl: `https://drive.google.com/file/d/${id}/view`,
-                });
-              }
-            } else {
-              for (const child of node) traverse(child);
-            }
-          }
-        }
-
-        traverse(data);
-      } catch (e) {
-        // Ignore JSON parse errors for non-matching callbacks
-      }
+    for (const f of (json.files || [])) {
+      items.push({
+        id:           f.id,
+        name:         f.name,
+        mimeType:     f.mimeType || 'application/octet-stream',
+        isFolder:     false,
+        parentId:     targetFolderId,
+        size:         f.size || 0,
+        createdTime:  f.createdTime,
+        modifiedTime: f.modifiedTime,
+        downloadUrl:  f.downloadUrl || ('https://drive.google.com/uc?export=download&id=' + f.id),
+        viewUrl:      f.webViewLink || ('https://drive.google.com/file/d/' + f.id + '/view'),
+      });
     }
 
     return {
-      items: Array.from(itemsMap.values()),
-      folderName,
+      items,
+      folderName: json.folderName || 'المجلد الرئيسي',
     };
   }
 
-  // 7. Ministry Documents Endpoints (Public Google Drive Read-Only Library)
-  app.get('/api/ministry-drive/files', async (req, res) => {
+  // 7. Governorate Drive Endpoints (Read-Only, Governorate-Scoped)
+  //
+  // Resolution chain:
+  //   edara_accounts.governorate_id → cities.governorate_id → city_drive_folders.city_id → folder_id
+  //
+  // The server resolves the folder from the authenticated account. The frontend
+  // never decides which governorate folder to access.
+
+  app.get('/api/governorate-drive/config', async (req, res) => {
     try {
-      const search = ((req.query.search as string) || '').trim().toLowerCase();
-      const requestedFolderId = ((req.query.folderId as string) || '').trim();
+      if (!supabaseClient) {
+        return res.status(503).json({
+          success: false,
+          message: 'خدمة Supabase غير مهيأة.',
+          code: 'not_configured',
+        });
+      }
 
-      const defaultFolderId = extractFolderId(APP_CONFIG.ministryDocuments.publicGoogleDriveFolderUrl) || '114dtG2M1l8Ui0yGajwY3FKByzZ4nUjNI';
-      const targetFolderId = requestedFolderId || defaultFolderId;
+      // Verify the caller's Supabase auth token (sent as Authorization header)
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({
+          success: false,
+          message: 'يرجى تسجيل الدخول أولاً.',
+          code: 'auth_error',
+        });
+      }
 
-      // Ministry public Drive is PUBLIC. It must never use the user's Google OAuth
-      // (cloud-backup) token. The two systems are kept strictly separate: browsing the
-      // Ministry Drive works for any user, with or without a connected Google account.
-      console.log(`[Ministry Drive API] Fetching Target Folder ID: ${targetFolderId}`);
-      const driveData = await fetchGoogleDrivePublicFolder(targetFolderId);
+      const token = authHeader.replace('Bearer ', '');
+
+      // Validate the JWT and extract the user ID
+      const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+      if (authError || !user) {
+        return res.status(401).json({
+          success: false,
+          message: 'يرجى تسجيل الدخول مرة أخرى.',
+          code: 'auth_error',
+        });
+      }
+
+      // Create a request-scoped Supabase client with the user's JWT so that
+      // RLS policies see auth.uid() = user.id (matching the anon key's JWT context).
+      const userClient = createClient(
+        supabaseUrl,
+        supabaseAnonKey,
+        { global: { headers: { Authorization: `Bearer ${token}` } } }
+      );
+
+      // --- Step 1: Look up edara_accounts (RLS-protected, needs user JWT) ---
+      const { data: account, error: accountError } = await userClient
+        .from('edara_accounts')
+        .select('governorate_id, governorate')
+        .eq('auth_user_id', user.id)
+        .maybeSingle();
+
+      if (accountError) {
+        console.error('[GOV DRIVE] account lookup error:', accountError.message, accountError.code);
+      }
+
+      if (accountError || !account) {
+        return res.status(404).json({
+          success: false,
+          message: 'لم يتم العثور على حسابك في النظام.',
+          code: 'no_account',
+        });
+      }
+
+      if (!account.governorate_id) {
+        return res.status(404).json({
+          success: false,
+          message: 'لم يتم تحديد المحافظة لك. يرجى التواصل مع الإدارة.',
+          code: 'no_governorate',
+        });
+      }
+
+      // --- Step 2: Resolve governorate folder directly from city_drive_folders ---
+      // city_drive_folders.governorate_id links directly to the account's governorate.
+      // Use userClient (user's JWT) so RLS sees auth.uid() and allows the read.
+
+      const { data: folderConfig, error: folderError } = await userClient
+        .from('city_drive_folders')
+        .select('id, governorate_id, folder_id, folder_url, is_active')
+        .eq('governorate_id', account.governorate_id)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (folderError) {
+        console.error('[GOV DRIVE] Supabase error during folder query:', folderError.code, folderError.message);
+        return res.status(500).json({
+          success: false,
+          message: 'حدث خطأ في استعلام قاعدة البيانات.',
+          code: 'query_error',
+        });
+      }
+
+      if (!folderConfig) {
+        return res.status(404).json({
+          success: false,
+          message: 'لم يتم تهيئة مجلد المحافظة بعد. يرجى التواصل مع الإدارة.',
+          code: 'no_folder',
+        });
+      }
+
+      res.json({
+        success: true,
+        config: {
+          governorateName: account.governorate || 'المحافظة',
+          folderId: folderConfig.folder_id,
+          folderUrl: folderConfig.folder_url,
+        },
+      });
+    } catch (err: any) {
+      console.error('[GOV DRIVE] EXCEPTION:', err?.message || err);
+      res.status(500).json({
+        success: false,
+        message: 'حدث خطأ في تحميل إعدادات المحافظة.',
+        code: 'server_error',
+      });
+    }
+  });
+
+  // Read-only file listing for the governorate drive folder
+  app.get('/api/governorate-drive/files', async (req, res) => {
+    try {
+      const folderId = ((req.query.folderId as string) || '').trim();
+      const search = ((req.query.search as string) || '').trim();
+
+      if (!folderId) {
+        return res.status(400).json({
+          success: false,
+          message: 'معرف المجلد مطلوب.',
+        });
+      }
+
+      const driveData = await fetchFromAppsScript(folderId);
       let items = driveData.items;
 
-      const folderCount = items.filter((i) => i.isFolder).length;
-      const fileCount = items.filter((i) => !i.isFolder).length;
-
-      console.log(`[Ministry Drive API] Folders Count Returned: ${folderCount}`);
-      console.log(`[Ministry Drive API] Files Count Returned: ${fileCount}`);
-
       if (search) {
-        items = items.filter((item) =>
-          item.name.toLowerCase().includes(search)
+        items = items.filter((item: any) =>
+          item.name.toLowerCase().includes(search.toLowerCase())
         );
       }
-      items = items.map((i: any) => ({ ...i, createdTime: i.modifiedTime }));
 
       res.json({
         success: true,
         items,
-        folderName: driveData.folderName || 'المجلد الرئيسي',
-        requiresAuth: false,
+        folderName: driveData.folderName || 'كتب رسمية',
       });
     } catch (err: any) {
-      console.error('[Ministry Drive API Error]:', err?.message || err);
+      console.error('[GOV DRIVE] files error:', err?.message || err);
       res.status(500).json({
         success: false,
-        message: 'تعذر الوصول إلى مستندات الوزارة حالياً.',
+        message: 'تعذر الوصول إلى كتب رسمية حالياً.',
       });
-    }
-  });
-
-  // Live count of files in the ministry drive folder (plus id list for new-file detection)
-  app.get('/api/ministry-drive/count', async (req, res) => {
-    try {
-      const targetFolderId =
-        extractFolderId(APP_CONFIG.ministryDocuments.publicGoogleDriveFolderUrl) ||
-        '114dtG2M1l8Ui0yGajwY3FKByzZ4nUjNI';
-      const driveData = await fetchGoogleDrivePublicFolder(targetFolderId);
-      const items = (driveData.items || []).map((i: any) => ({ id: i.id, isFolder: !!i.isFolder }));
-      const fileCount = items.filter((i: any) => !i.isFolder).length;
-      res.json({ success: true, count: fileCount, items });
-    } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
-    }
-  });
-
-  // Track which ministry drive file ids the user has already seen
-  function getSeenMinistryDocs(): string[] {
-    try {
-      const row = queryOne<any>(`SELECT value FROM app_meta WHERE key = 'seen_ministry_docs'`);
-      if (row && row.value) {
-        const arr = JSON.parse(row.value);
-        if (Array.isArray(arr)) return arr;
-      }
-    } catch (e) {
-      /* ignore */
-    }
-    return [];
-  }
-
-  app.get('/api/ministry-drive/seen', (req, res) => {
-    try {
-      res.json({ success: true, seen: getSeenMinistryDocs() });
-    } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
-    }
-  });
-
-  app.post('/api/ministry-drive/seen', (req, res) => {
-    try {
-      const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
-      const seen = new Set(getSeenMinistryDocs());
-      ids.forEach((id: string) => seen.add(id));
-      const value = JSON.stringify(Array.from(seen));
-      execute(
-        `INSERT INTO app_meta (key, value) VALUES ('seen_ministry_docs', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-        [value]
-      );
-      res.json({ success: true });
-    } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
     }
   });
 
@@ -2476,7 +2575,7 @@ async function startServer() {
       }
 
       // Fallback: public read-only listing (no upload/delete)
-      const driveData = await fetchGoogleDrivePublicFolder(targetFolderId);
+      const driveData = await fetchFromAppsScript(targetFolderId);
       const items = (driveData.items || []).map((i: any) => ({
         ...i,
         createdTime: i.modifiedTime,
@@ -2589,108 +2688,6 @@ async function startServer() {
     } catch (err: any) {
       console.error('[Admin Files Delete Error]:', err?.message || err);
       res.status(500).json({ success: false, message: err.message || 'حدث خطأ أثناء حذف الملف.' });
-    }
-  });
-
-  app.get('/api/ministry-documents', (req, res) => {
-    try {
-      const search = (req.query.search as string) || '';
-
-      let sql = 'SELECT * FROM ministry_documents';
-      let params: any[] = [];
-
-      if (search.trim()) {
-        sql += ` WHERE title LIKE ? OR ministry_department LIKE ? OR doc_number LIKE ? OR description LIKE ?`;
-        const p = `%${search.trim()}%`;
-        params = [p, p, p, p];
-      }
-
-      sql += ' ORDER BY created_at DESC';
-      const rows = queryAll<any>(sql, params);
-
-      const documents = rows.map((r) => ({
-        id: r.id,
-        title: r.title,
-        ministryDepartment: r.ministry_department,
-        docNumber: r.doc_number,
-        docDate: r.doc_date,
-        description: r.description || '',
-        filePath: r.file_path || '',
-        fileName: r.file_name || '',
-        fileSize: r.file_size || 0,
-        createdAt: r.created_at,
-        updatedAt: r.updated_at,
-      }));
-
-      res.json({ success: true, documents });
-    } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
-    }
-  });
-
-  app.post('/api/ministry-documents', upload.single('file'), (req, res) => {
-    try {
-      const { title, ministryDepartment, docNumber, docDate, description } = req.body;
-      const file = req.file;
-
-      if (!title || !title.trim()) return res.status(400).json({ success: false, message: 'عنوان الكتاب الوزاري مطلوب.' });
-      if (!ministryDepartment || !ministryDepartment.trim()) return res.status(400).json({ success: false, message: 'الجهة الوزارية مطلوبة.' });
-      if (!docNumber || !docNumber.trim()) return res.status(400).json({ success: false, message: 'رقم الكتاب الوزاري مطلوب.' });
-
-      const id = generateUUID();
-      const now = new Date().toISOString();
-
-      execute(
-        `INSERT INTO ministry_documents (id, title, ministry_department, doc_number, doc_date, description, file_path, file_name, file_size, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          id,
-          title.trim(),
-          ministryDepartment.trim(),
-          docNumber.trim(),
-          docDate || now.substring(0, 10),
-          (description || '').trim(),
-          file ? file.path : '',
-          file ? file.originalname : '',
-          file ? file.size : 0,
-          now,
-          now,
-        ]
-      );
-
-      res.json({ success: true, message: 'تم إضافة كتاب الوزارة بنجاح.' });
-    } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
-    }
-  });
-
-  app.get('/api/ministry-documents/download/:id', (req, res) => {
-    try {
-      const { id } = req.params;
-      const doc = queryOne<any>('SELECT * FROM ministry_documents WHERE id = ?', [id]);
-      if (!doc || !doc.file_path || !fs.existsSync(doc.file_path)) {
-        return res.status(404).json({ success: false, message: 'الملف غير موجود.' });
-      }
-      res.download(doc.file_path, doc.file_name || 'ministry_document');
-    } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
-    }
-  });
-
-  app.delete('/api/ministry-documents/:id', (req, res) => {
-    try {
-      const { id } = req.params;
-      const doc = queryOne<any>('SELECT * FROM ministry_documents WHERE id = ?', [id]);
-      if (doc && doc.file_path && fs.existsSync(doc.file_path)) {
-        try {
-          fs.unlinkSync(doc.file_path);
-        } catch (e) {
-          console.error('Error removing ministry doc file:', e);
-        }
-      }
-      execute('DELETE FROM ministry_documents WHERE id = ?', [id]);
-      res.json({ success: true, message: 'تم حذف كتاب الوزارة بنجاح.' });
-    } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
     }
   });
 
@@ -2847,7 +2844,7 @@ async function startServer() {
       const profile = queryOne<any>('SELECT * FROM school_profile LIMIT 1');
       const manifest = {
         app: 'EDARA',
-        version: '1.0.0',
+        version: '1.0.2',
         createdAt: new Date().toISOString(),
         schoolName: profile ? profile.school_name : 'EDARA School',
       };
@@ -2872,6 +2869,30 @@ async function startServer() {
           const fpath = path.join(MINISTRY_DOCS_DIR, fname);
           if (fs.statSync(fpath).isFile()) {
             minDocsFolder.file(fname, fs.readFileSync(fpath));
+          }
+        }
+      }
+
+      // Include Mail attachments (local-first permanent store)
+      const mailFolder = zip.folder('mail_attachments');
+      if (fs.existsSync(MAIL_ATTACHMENTS_DIR) && mailFolder) {
+        const mailFiles = fs.readdirSync(MAIL_ATTACHMENTS_DIR);
+        for (const fname of mailFiles) {
+          const fpath = path.join(MAIL_ATTACHMENTS_DIR, fname);
+          if (fs.statSync(fpath).isFile()) {
+            mailFolder.file(fname, fs.readFileSync(fpath));
+          }
+        }
+      }
+
+      // Include correspondence attachments
+      const corrFolder = zip.folder('correspondence');
+      if (fs.existsSync(CORRESPONDENCE_DIR) && corrFolder) {
+        const corrFiles = fs.readdirSync(CORRESPONDENCE_DIR);
+        for (const fname of corrFiles) {
+          const fpath = path.join(CORRESPONDENCE_DIR, fname);
+          if (fs.statSync(fpath).isFile()) {
+            corrFolder.file(fname, fs.readFileSync(fpath));
           }
         }
       }
@@ -3002,6 +3023,30 @@ async function startServer() {
         }
       }
 
+      // Extract mail_attachments
+      const mailFolderInZip = zip.folder('mail_attachments');
+      if (mailFolderInZip) {
+        for (const filename of Object.keys(zip.files)) {
+          if (filename.startsWith('mail_attachments/') && !zip.files[filename].dir) {
+            const fileBuf = await zip.files[filename].async('nodebuffer');
+            const targetPath = path.join(MAIL_ATTACHMENTS_DIR, path.basename(filename));
+            fs.writeFileSync(targetPath, fileBuf);
+          }
+        }
+      }
+
+      // Extract correspondence attachments
+      const corrFolderInZip = zip.folder('correspondence');
+      if (corrFolderInZip) {
+        for (const filename of Object.keys(zip.files)) {
+          if (filename.startsWith('correspondence/') && !zip.files[filename].dir) {
+            const fileBuf = await zip.files[filename].async('nodebuffer');
+            const targetPath = path.join(CORRESPONDENCE_DIR, path.basename(filename));
+            fs.writeFileSync(targetPath, fileBuf);
+          }
+        }
+      }
+
       // Clean up uploaded temp zip
       try {
         fs.unlinkSync(uploadedFile.path);
@@ -3020,24 +3065,201 @@ async function startServer() {
     }
   });
 
+  // =========================================================================
+  // 8. Correspondence (Official Administrative Mail from Edara News)
+  // =========================================================================
+
+  // List all local correspondence (newest first)
+  app.get('/api/correspondence', (req, res) => {
+    try {
+      const rows = queryAll<any>(
+        'SELECT * FROM correspondence ORDER BY created_at DESC'
+      );
+      res.json({ success: true, correspondence: rows });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // Get a single correspondence by message_id
+  app.get('/api/correspondence/:messageId', (req, res) => {
+    try {
+      const row = queryOne<any>(
+        'SELECT * FROM correspondence WHERE message_id = ?',
+        [req.params.messageId]
+      );
+      if (!row) return res.status(404).json({ success: false, message: 'غير موجود.' });
+      res.json({ success: true, correspondence: row });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // Save a received correspondence (from Edara Desktop sync)
+  app.post('/api/correspondence', (req, res) => {
+    try {
+      const { message_id, sender_display_name, subject, description, sent_at, attachment_name, local_attachment_path } = req.body;
+      if (!message_id) return res.status(400).json({ success: false, message: 'message_id مطلوب.' });
+
+      // Upsert: if message_id already exists, skip (duplicate protection)
+      const existing = queryOne<any>('SELECT id FROM correspondence WHERE message_id = ?', [message_id]);
+      if (existing) {
+        return res.json({ success: true, id: existing.id, duplicate: true });
+      }
+
+      const id = generateUUID();
+      const created_at = new Date().toISOString();
+      execute(
+        `INSERT INTO correspondence (id, message_id, sender_display_name, subject, description, sent_at, attachment_name, local_attachment_path, is_read, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+        [id, message_id, sender_display_name || '', subject || '', description || '', sent_at || '', attachment_name || '', local_attachment_path || '', created_at]
+      );
+      res.json({ success: true, id });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // Mark correspondence as read (local only)
+  app.put('/api/correspondence/:messageId/read', (req, res) => {
+    try {
+      execute('UPDATE correspondence SET is_read = 1 WHERE message_id = ?', [req.params.messageId]);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // Delete a correspondence
+  app.delete('/api/correspondence/:messageId', (req, res) => {
+    try {
+      const row = queryOne<any>('SELECT local_attachment_path FROM correspondence WHERE message_id = ?', [req.params.messageId]);
+      if (row?.local_attachment_path && fs.existsSync(row.local_attachment_path)) {
+        fs.unlinkSync(row.local_attachment_path);
+      }
+      execute('DELETE FROM correspondence WHERE message_id = ?', [req.params.messageId]);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // Save a correspondence attachment file
+  app.post('/api/correspondence/attachment', (req, res) => {
+    try {
+      const { message_id, filename, buffer } = req.body;
+      if (!message_id || !filename || !buffer) {
+        return res.status(400).json({ success: false, message: 'message_id, filename, and buffer required.' });
+      }
+
+      const safeName = filename.replace(/[^a-zA-Z0-9_\-\.\u0600-\u06FF]/g, '_');
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+      const ext = path.extname(safeName);
+      const baseName = path.basename(safeName, ext);
+      const localName = `${baseName}_${uniqueSuffix}${ext}`;
+      const localPath = path.join(CORRESPONDENCE_DIR, localName);
+
+      // Decode base64 buffer and write to disk
+      const buf = Buffer.from(buffer, 'base64');
+      fs.writeFileSync(localPath, buf);
+
+      // Verify file was written
+      if (!fs.existsSync(localPath) || fs.statSync(localPath).size !== buf.length) {
+        return res.status(500).json({ success: false, message: 'فشل حفظ الملف.' });
+      }
+
+      res.json({ success: true, localPath, filename: localName });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // Open a local correspondence attachment
+  app.get('/api/correspondence/open/:messageId', async (req, res) => {
+    try {
+      const row = queryOne<any>('SELECT local_attachment_path FROM correspondence WHERE message_id = ?', [req.params.messageId]);
+      if (!row?.local_attachment_path) {
+        return res.status(404).json({ success: false, message: 'لا يوجد مرفق.' });
+      }
+      const filePath = row.local_attachment_path;
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ success: false, message: 'الملف غير موجود.' });
+      }
+      const { exec } = await import('child_process');
+      const platform = process.platform;
+      const cmd = platform === 'win32' ? `start "" "${filePath}"` :
+                  platform === 'darwin' ? `open "${filePath}"` :
+                  `xdg-open "${filePath}"`;
+      exec(cmd);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // =========================================================================
   // 9. Vite Dev Server / Static Middleware
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    const distPath = process.env.EDARA_DIST_DIR || path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '127.0.0.1', () => {
     console.log(`[EDARA] Server running at http://localhost:${PORT}`);
   });
+  (globalThis as any).__edaraHttpServer = server;
+
+  // Handle server errors (EADDRINUSE, EACCES, etc.)
+  server.on('error', (err: any) => {
+    console.error(`[EDARA] Server error: ${err.code || err.message}`);
+    (globalThis as any).__edaraServerError = err.code || err.message;
+  });
+
+  // Expose a clean shutdown function for Electron to call
+  (globalThis as any).__edaraShutdownServer = () => new Promise<void>((resolve) => {
+    try {
+      saveDatabase();
+      if (db) {
+        try { db.close(); } catch {}
+      }
+    } catch {}
+    server.closeAllConnections ? server.closeAllConnections() : null;
+    server.close(() => {
+      (globalThis as any).__edaraHttpServer = null;
+      resolve();
+    });
+    // Fallback timeout: if close() hangs, force resolve
+    setTimeout(() => {
+      (globalThis as any).__edaraHttpServer = null;
+      resolve();
+    }, 3000);
+  });
+
+  // Graceful shutdown on process signals
+  const gracefulShutdown = () => {
+    console.log('[EDARA] Received shutdown signal, cleaning up...');
+    try {
+      saveDatabase();
+      if (db) {
+        try { db.close(); } catch {}
+      }
+    } catch {}
+    server.closeAllConnections ? server.closeAllConnections() : null;
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 3000);
+  };
+  process.on('SIGINT', gracefulShutdown);
+  process.on('SIGTERM', gracefulShutdown);
 
   // Check for updates on every launch
   checkForUpdates().then((status) => {
@@ -3047,9 +3269,10 @@ async function startServer() {
   });
 
   // Keep checking for updates every 3 hours while the app is running
-  setInterval(() => {
+  const updateInterval = setInterval(() => {
     checkForUpdates().catch((err) => console.warn('[EDARA Updates] Periodic check failed:', err));
   }, UPDATE_CHECK_INTERVAL_MS);
+  (globalThis as any).__edaraUpdateInterval = updateInterval;
 }
 
 startServer().catch((err) => {

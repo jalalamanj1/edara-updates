@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { EdaraLogo } from './EdaraLogo';
 import { SchoolProfile } from '../types';
 import { Building2, User, Phone, Mail, MapPin, UserCheck, Calendar, Save, Loader2, AlertCircle, School } from 'lucide-react';
@@ -6,7 +6,7 @@ import { api } from '../services/api';
 import { SCHOOL_TYPE_OPTIONS, SchoolType } from '../services/schoolConfig';
 import { IRAQI_GOVERNORATES } from '../utils/subjects';
 import { normalizeDigits } from '../utils/numberUtils';
-import { updateAccountCity } from '../services/auth';
+import { updateAccountCity, updateAccountOrganizationName } from '../services/auth';
 
 interface RegistrationWindowProps {
   onRegistered: (profile: SchoolProfile) => void;
@@ -25,14 +25,48 @@ export const RegistrationWindow: React.FC<RegistrationWindowProps> = ({ onRegist
   const [formData, setFormData] = useState({
     fullName: '',
     schoolName: '',
-    schoolType: 'SECONDARY' as SchoolType,
+    schoolType: '' as SchoolType,
     email: '',
     phone: '',
     address: '',
     principalName: '',
     academicYear: defaultAcademicYear,
     city: '',
+    gender: '' as '' | 'male' | 'female' | 'mixed',
   });
+
+  const [isPrefilling, setIsPrefilling] = useState(true);
+
+  // Pre-populate form from the current account's profile data (already synced to local SQLite).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const init = await api.init();
+        if (cancelled) return;
+        const p = init?.schoolProfile;
+        if (p) {
+          setFormData({
+            fullName: p.fullName || '',
+            schoolName: p.schoolName || '',
+            schoolType: (p.schoolType as SchoolType) || '',
+            email: p.email || '',
+            phone: p.phone || '',
+            address: p.address || '',
+            principalName: p.principalName || '',
+            academicYear: p.academicYear || defaultAcademicYear,
+            city: p.city || '',
+            gender: '' as '' | 'male' | 'female' | 'mixed',
+          });
+        }
+      } catch {
+        // keep empty defaults — user can fill manually
+      } finally {
+        if (!cancelled) setIsPrefilling(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
@@ -99,7 +133,12 @@ export const RegistrationWindow: React.FC<RegistrationWindowProps> = ({ onRegist
         try {
           await updateAccountCity(formData.city.trim());
         } catch {
-          /* Supabase city persistence is best-effort; local profile still holds it. */
+          /* best-effort */
+        }
+        try {
+          await updateAccountOrganizationName(formData.schoolName.trim());
+        } catch {
+          /* best-effort */
         }
         onRegistered(res.schoolProfile);
       } else {
@@ -127,6 +166,13 @@ export const RegistrationWindow: React.FC<RegistrationWindowProps> = ({ onRegist
           <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm font-semibold flex items-center gap-3">
             <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
             <span>{submitError}</span>
+          </div>
+        )}
+
+        {isPrefilling && (
+          <div className="mb-6 p-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 text-sm font-semibold flex items-center gap-3">
+            <Loader2 className="w-5 h-5 text-blue-600 shrink-0 animate-spin" />
+            <span>جاري تحميل بيانات الحساب...</span>
           </div>
         )}
 
@@ -178,11 +224,14 @@ export const RegistrationWindow: React.FC<RegistrationWindowProps> = ({ onRegist
                 نوع المدرسة <span className="text-red-500">*</span>
               </label>
               <div className="relative">
-                <select
+                  <select
                   value={formData.schoolType}
                   onChange={(e) => setFormData({ ...formData, schoolType: e.target.value as SchoolType })}
                   className="w-full px-4 py-3 pr-10 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 text-sm font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all appearance-none cursor-pointer"
                 >
+                  <option value="" disabled>
+                    اختر نوع المدرسة
+                  </option>
                   {SCHOOL_TYPE_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
                       {opt.label}
@@ -192,6 +241,28 @@ export const RegistrationWindow: React.FC<RegistrationWindowProps> = ({ onRegist
                 <School className="w-4 h-4 text-slate-400 absolute right-3.5 top-3.5 pointer-events-none" />
               </div>
               {errors.schoolType && <p className="text-red-600 text-xs font-bold mt-1">{errors.schoolType}</p>}
+            </div>
+
+            {/* Field: جنس المدرسة (Gender) */}
+            <div>
+              <label className="block text-sm font-bold text-slate-800 mb-1.5">
+                جنس المدرسة <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <select
+                  value={formData.gender}
+                  onChange={(e) => setFormData({ ...formData, gender: e.target.value as any })}
+                  className="w-full px-4 py-3 pr-10 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 text-sm font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all appearance-none cursor-pointer"
+                >
+                  <option value="" disabled>
+                    اختر جنس المدرسة
+                  </option>
+                  <option value="mixed">مختلط</option>
+                  <option value="male">ذكور</option>
+                  <option value="female">إناث</option>
+                </select>
+                <UserCheck className="w-4 h-4 text-slate-400 absolute right-3.5 top-3.5 pointer-events-none" />
+              </div>
             </div>
 
             {/* Field: المحافظة (City / Governorate) */}

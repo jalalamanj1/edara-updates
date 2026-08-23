@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { DocumentTemplate } from '../types';
+import { DocumentTemplate, SchoolProfile } from '../types';
 import { api } from '../services/api';
 import {
   FileText,
@@ -20,11 +20,13 @@ import { CreateDocumentModal } from '../components/CreateDocumentModal';
 interface DocumentsViewProps {
   onRefreshStats: () => void;
   showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
+  schoolProfile?: SchoolProfile | null;
 }
 
 export const DocumentsView: React.FC<DocumentsViewProps> = ({
   onRefreshStats,
   showToast,
+  schoolProfile,
 }) => {
   const [templates, setTemplates] = useState<DocumentTemplate[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -254,6 +256,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         initialTemplate={modalTemplate}
+        schoolProfile={schoolProfile}
         showToast={showToast}
         onSuccess={() => {
           setModalTemplate(null);

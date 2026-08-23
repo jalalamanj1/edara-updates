@@ -1,4 +1,7 @@
 // Port of MENTIS Core/SubjectManager.cs — grade-aware subject lists for grid prefill.
+// Subject logic is centralized in ../services/schoolConfig (Iraqi education structure).
+
+import { getSubjectsForGrade } from '../services/schoolConfig';
 
 export function extractGradeNumber(grade: string): number {
   if (!grade) return 0;
@@ -11,87 +14,8 @@ export function extractGradeNumber(grade: string): number {
   return 0;
 }
 
-export function getPrimarySubjects(grade: string): string[] {
-  const subjects = [
-    'التربية الإسلامية',
-    'اللغة العربية',
-    'القراءة',
-    'القواعد',
-    'اللغة الإنجليزية',
-    'الرياضيات',
-    'العلوم',
-    'التربية الفنية',
-    'التربية الرياضية',
-  ];
-  if (extractGradeNumber(grade) >= 5) subjects.splice(7, 0, 'الاجتماعيات');
-  return subjects;
-}
-
-export function getMiddleSchoolSubjects(grade: string): string[] {
-  if (extractGradeNumber(grade) === 1) {
-    return [
-      'التربية الإسلامية',
-      'اللغة العربية',
-      'اللغة الإنجليزية',
-      'الرياضيات',
-      'العلوم',
-      'الاجتماعيات',
-      'الحاسوب',
-      'التربية الفنية',
-      'التربية الرياضية',
-    ];
-  }
-  return [
-    'التربية الإسلامية',
-    'اللغة العربية',
-    'اللغة الإنجليزية',
-    'الرياضيات',
-    'الفيزياء',
-    'الكيمياء',
-    'الأحياء',
-    'الاجتماعيات',
-    'الحاسوب',
-    'التربية الفنية',
-    'التربية الرياضية',
-  ];
-}
-
-export function getScientificSubjects(): string[] {
-  return [
-    'التربية الإسلامية',
-    'اللغة العربية',
-    'اللغة الإنجليزية',
-    'الرياضيات',
-    'الفيزياء',
-    'الكيمياء',
-    'الأحياء',
-    'التربية الفنية',
-    'التربية الرياضية',
-  ];
-}
-
-export function getLiterarySubjects(): string[] {
-  return [
-    'التربية الإسلامية',
-    'اللغة العربية',
-    'اللغة الإنجليزية',
-    'الرياضيات',
-    'التاريخ',
-    'الجغرافية',
-    'الاقتصاد',
-    'الفلسفة وعلم النفس',
-    'التربية الفنية',
-    'التربية الرياضية',
-  ];
-}
-
-export function getSubjects(grade: string): string[] {
-  if (!grade) return [];
-  if (grade.includes('متوسط')) return getMiddleSchoolSubjects(grade);
-  if (grade.includes('علمي')) return getScientificSubjects();
-  if (grade.includes('أدبي')) return getLiterarySubjects();
-  if (grade.includes('ابتدائي')) return getPrimarySubjects(grade);
-  return [];
+export function getSubjects(grade: string, branch?: string): string[] {
+  return getSubjectsForGrade(grade, branch);
 }
 
 export function isSubjectGridColumn(columnKey: string): boolean {
@@ -105,18 +29,6 @@ export const PRIMARY_GRADES = [
   'الرابع الابتدائي',
   'الخامس الابتدائي',
   'السادس الابتدائي',
-];
-
-export const SECONDARY_GRADES = [
-  'الأول المتوسط',
-  'الثاني المتوسط',
-  'الثالث المتوسط',
-  'الرابع العلمي',
-  'الرابع الأدبي',
-  'الخامس العلمي',
-  'الخامس الأدبي',
-  'السادس العلمي',
-  'السادس الأدبي',
 ];
 
 export const BIRTH_CITIES = [

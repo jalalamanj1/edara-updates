@@ -1,11 +1,15 @@
 export type ThemeMode = 'light' | 'dark' | 'system';
 
 const STORAGE_KEY = 'edara_theme';
-const DARK_QUERY = '(prefers-color-scheme: dark)';
 
-function getMedia(): MediaQueryList | null {
-  if (typeof window === 'undefined' || !window.matchMedia) return null;
-  return window.matchMedia(DARK_QUERY);
+/**
+ * Resolve theme based on current local time:
+ *   06:00–17:59 → light
+ *   18:00–05:59 → dark
+ */
+function getTimeBasedTheme(): 'light' | 'dark' {
+  const hour = new Date().getHours();
+  return hour >= 6 && hour < 18 ? 'light' : 'dark';
 }
 
 function getStored(): ThemeMode {
@@ -21,30 +25,60 @@ function getStored(): ThemeMode {
 function resolve(mode: ThemeMode): 'light' | 'dark' {
   if (mode === 'dark') return 'dark';
   if (mode === 'light') return 'light';
-  const mql = getMedia();
-  return mql && mql.matches ? 'dark' : 'light';
+  return getTimeBasedTheme();
 }
 
 function applyThemeValue(value: 'light' | 'dark'): void {
   document.documentElement.setAttribute('data-theme', value);
 }
 
-let systemListener: ((e: MediaQueryListEvent) => void) | null = null;
+// ─── Auto-schedule timer ─────────────────────────────────────────────────────
+// Calculates ms until the next 06:00 / 18:00 boundary, then switches theme.
+let scheduleTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleNextSwitch(): void {
+  if (scheduleTimer !== null) {
+    clearTimeout(scheduleTimer);
+    scheduleTimer = null;
+  }
+
+  const now = new Date();
+  const hour = now.getHours();
+  const minute = now.getMinutes();
+  const second = now.getSeconds();
+  const msNow = (hour * 3600 + minute * 60 + second) * 1000;
+
+  // Next boundary: 06:00 (21600000 ms) or 18:00 (64800000 ms)
+  const lightStart = 6 * 3600 * 1000;   // 06:00
+  const darkStart = 18 * 3600 * 1000;   // 18:00
+
+  let msUntilNext: number;
+  if (msNow < lightStart) {
+    // before 06:00 → next boundary is 06:00
+    msUntilNext = lightStart - msNow + 1000; // +1s to land on the new minute
+  } else if (msNow < darkStart) {
+    // between 06:00 and 18:00 → next boundary is 18:00
+    msUntilNext = darkStart - msNow + 1000;
+  } else {
+    // after 18:00 → next boundary is tomorrow 06:00
+    msUntilNext = 24 * 3600 * 1000 - msNow + lightStart + 1000;
+  }
+
+  scheduleTimer = setTimeout(() => {
+    scheduleTimer = null;
+    const mode = getStored();
+    if (mode === 'system') {
+      applyThemeValue(getTimeBasedTheme());
+    }
+    scheduleNextSwitch();
+  }, msUntilNext);
+}
 
 /** Apply the stored theme immediately. Call this once before first render. */
 export function initTheme(): void {
   const mode = getStored();
   applyThemeValue(resolve(mode));
-
-  if (mode === 'system') {
-    const mql = getMedia();
-    if (mql && !systemListener) {
-      systemListener = (e) => {
-        if (getStored() === 'system') applyThemeValue(e.matches ? 'dark' : 'light');
-      };
-      mql.addEventListener('change', systemListener);
-    }
-  }
+  scheduleNextSwitch();
 }
 
 /** Persist and apply a new theme choice. */
@@ -60,19 +94,7 @@ export function setTheme(mode: ThemeMode): void {
   window.setTimeout(() => root.classList.remove('theme-transition'), 260);
 
   applyThemeValue(resolve(mode));
-
-  const mql = getMedia();
-  if (mode === 'system') {
-    if (mql && !systemListener) {
-      systemListener = (e) => {
-        if (getStored() === 'system') applyThemeValue(e.matches ? 'dark' : 'light');
-      };
-      mql.addEventListener('change', systemListener);
-    }
-  } else if (systemListener && mql) {
-    mql.removeEventListener('change', systemListener);
-    systemListener = null;
-  }
+  scheduleNextSwitch();
 }
 
 export function getTheme(): ThemeMode {

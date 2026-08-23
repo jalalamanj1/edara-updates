@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Newspaper, ExternalLink, RefreshCw, AlertTriangle, Loader2 } from 'lucide-react';
 import { api } from '../services/api';
 import { supabase } from '../services/supabase';
@@ -45,7 +45,6 @@ export const LatestNewsCard: React.FC = () => {
   const [items, setItems] = useState<NewsItem[]>(cached);
   const [loading, setLoading] = useState<boolean>(cached.length === 0);
   const [error, setError] = useState<boolean>(false);
-  const inFlightRef = useRef(false);
 
   const load = React.useCallback(async () => {
     try {
@@ -108,78 +107,9 @@ export const LatestNewsCard: React.FC = () => {
     };
   }, []);
 
-  // Background fallback refresh every 2s (silent; only updates when data changed).
-  // Realtime above delivers instant updates; this polling is a reliable fallback.
-  useEffect(() => {
-    if (!supabase) return;
-    let cancelled = false;
-    let intervalId: ReturnType<typeof setInterval> | null = null;
-
-    const refresh = () => {
-      // Prevent overlapping requests if a previous refresh is still running.
-      if (inFlightRef.current) return;
-      inFlightRef.current = true;
-      getPublishedNews()
-        .then((data) => {
-          if (cancelled) return;
-          setItems((prev) => {
-            const unchanged =
-              prev.length === data.length &&
-              prev.every(
-                (p, i) =>
-                  p.id === data[i].id &&
-                  p.title === data[i].title &&
-                  p.content === data[i].content &&
-                  p.category === data[i].category &&
-                  p.image_url === data[i].image_url &&
-                  p.source_url === data[i].source_url &&
-                  p.published === data[i].published &&
-                  p.published_at === data[i].published_at &&
-                  p.updated_at === data[i].updated_at
-              );
-            if (unchanged) return prev;
-            writeCache(data);
-            return data;
-          });
-          setError(false);
-        })
-        .catch(() => {
-          /* keep previous data on transient error */
-        })
-        .finally(() => {
-          inFlightRef.current = false;
-        });
-    };
-
-    const start = () => {
-      if (intervalId != null) return;
-      refresh(); // immediate refresh when becoming active
-      intervalId = setInterval(refresh, 2000);
-    };
-
-    const stop = () => {
-      if (intervalId != null) {
-        clearInterval(intervalId);
-        intervalId = null;
-      }
-    };
-
-    // When the window is hidden (minimized), pause the polling to save network.
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') start();
-      else stop();
-    };
-
-    document.addEventListener('visibilitychange', onVisibility);
-    if (document.visibilityState === 'visible') start();
-    else stop();
-
-    return () => {
-      cancelled = true;
-      stop();
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, []);
+  // No polling needed — the Supabase Realtime subscription above handles instant
+  // updates. Polling was previously a redundant fallback that caused unnecessary
+  // network traffic and re-renders every 2 seconds.
 
   const showLoading = loading && items.length === 0;
   const showError = error && items.length === 0;

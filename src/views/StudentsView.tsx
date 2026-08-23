@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { Student, SchoolProfile } from '../types';
 import { api } from '../services/api';
-import { getGradesForSchoolType, DEFAULT_SECTIONS } from '../services/schoolConfig';
+import { getGradesForSchoolType, DEFAULT_SECTIONS, isPreparatoryGrade } from '../services/schoolConfig';
 import {
   Users,
   Search,
@@ -66,6 +66,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
     dob: string;
     grade: string;
     section: string;
+    branch: string;
     phone: string;
     parentName: string;
     parentPhone: string;
@@ -75,10 +76,11 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
     fullName: '',
     gender: 'ذكر',
     dob: '',
-    grade: availableGrades[0] || 'الأول الابتدائي',
-    section: 'أ',
-    phone: '',
-    parentName: '',
+      grade: availableGrades[0] || 'الأول الابتدائي',
+      section: 'أ',
+      branch: '',
+      phone: '',
+      parentName: '',
     parentPhone: '',
     address: '',
     notes: '',
@@ -116,6 +118,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
       dob: '2012-01-01',
       grade: availableGrades[0] || 'الأول الابتدائي',
       section: 'أ',
+      branch: '',
       phone: '',
       parentName: '',
       parentPhone: '',
@@ -134,6 +137,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
       dob: student.dob || '',
       grade: availableGrades.includes(student.grade) ? student.grade : availableGrades[0] || student.grade,
       section: student.section || 'أ',
+      branch: student.branch || '',
       phone: student.phone,
       parentName: student.parentName,
       parentPhone: student.parentPhone,
@@ -298,6 +302,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
           'الجنس': s.gender,
           'الصف الدراسي': s.grade,
           'الشعبة': s.section || 'أ',
+          'الفرع': s.branch || '',
           'رقم الهاتف': String(s.phone || ''),
           'اسم ولي الأمر': s.parentName,
           'رقم هاتف ولي الأمر': String(s.parentPhone || ''),
@@ -367,6 +372,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
               gender: row['الجنس'] === 'أنثى' || row['الجنس'] === 'انثى' ? 'أنثى' : 'ذكر',
               grade: String(row['الصف الدراسي'] || row['الصف'] || sheetName || availableGrades[0] || 'الأول الابتدائي').trim(),
               section: String(row['الشعبة'] || row['شعبة'] || 'أ').trim(),
+              branch: String(row['الفرع'] || row['فرع'] || '').trim(),
               phone: String(row['رقم الهاتف'] || row['الهاتف'] || row['هاتف الطالب'] || '').trim(),
               parentName: String(row['اسم ولي الأمر'] || row['ولي الأمر'] || row['اسم الولي'] || '').trim(),
               parentPhone: String(row['رقم هاتف ولي الأمر'] || row['هاتف ولي الأمر'] || row['هاتف الولي'] || '').trim(),
@@ -693,7 +699,9 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                   </label>
                   <select
                     value={formValues.grade}
-                    onChange={(e) => setFormValues({ ...formValues, grade: e.target.value })}
+                    onChange={(e) =>
+                      setFormValues({ ...formValues, grade: e.target.value, branch: '' })
+                    }
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 text-sm font-semibold focus:bg-white focus:ring-2 focus:ring-blue-600 focus:outline-none cursor-pointer"
                   >
                     {availableGrades.map((g) => (
@@ -704,6 +712,23 @@ export const StudentsView: React.FC<StudentsViewProps> = ({
                   </select>
                   {formErrors.grade && <p className="text-red-600 text-xs font-bold mt-1">{formErrors.grade}</p>}
                 </div>
+
+                {/* Branch Dropdown — only for Preparatory (المرحلة الإعدادية) */}
+                {isPreparatoryGrade(formValues.grade) && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      الفرع <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={formValues.branch}
+                      onChange={(e) => setFormValues({ ...formValues, branch: e.target.value })}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 text-sm font-semibold focus:bg-white focus:ring-2 focus:ring-blue-600 focus:outline-none cursor-pointer"
+                    >
+                      <option value="SCIENTIFIC">الفرع العلمي</option>
+                      <option value="LITERARY">الفرع الأدبي</option>
+                    </select>
+                  </div>
+                )}
 
                 {/* Section Dropdown */}
                 <div>

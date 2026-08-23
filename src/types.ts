@@ -8,6 +8,7 @@ export interface SchoolProfile {
   schoolName: string;
   schoolType?: SchoolType;
   city?: string;
+  governorate?: string;
   principalTitle?: string;
   email?: string;
   phone: string;
@@ -29,8 +30,24 @@ export interface Account {
   maximum_devices: number;
   is_active: boolean;
   city?: string | null;
+  // Official organization fields from edara_accounts (Supabase is authoritative)
+  school_name?: string | null;
+  principal_name?: string | null;
+  manager_name?: string | null;
+  owner_name?: string | null;
+  job_title?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  governorate?: string | null;
+  governorate_id?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface GovernorateDriveConfig {
+  governorateName: string;
+  folderId: string;
+  folderUrl: string;
 }
 
 export type DeviceStatus =
@@ -51,6 +68,7 @@ export interface Student {
   dob: string;
   grade: string;
   section?: string;
+  branch?: string;
   phone: string;
   parentName: string;
   parentPhone: string;
@@ -154,20 +172,6 @@ export interface SchoolDocument {
   updatedAt: string;
 }
 
-export interface MinistryDocument {
-  id: string;
-  title: string;
-  ministryDepartment: string;
-  docNumber: string;
-  docDate: string;
-  description?: string;
-  filePath?: string;
-  fileName?: string;
-  fileSize?: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface BackupHistoryItem {
   id: string;
   fileName: string;
@@ -185,10 +189,11 @@ export type NavigationTab =
   | 'students'
   | 'staff'
   | 'documents'
-  | 'ministry'
   | 'admin'
+  | 'governorate_drive'
   | 'archive'
   | 'backup'
+  | 'mail'
   | 'settings';
 
 export interface ToastMessage {
@@ -196,4 +201,61 @@ export interface ToastMessage {
   type: 'success' | 'error' | 'info';
   message: string;
 }
+
+// ===== Correspondence (Official Administrative Mail from Edara News) =====
+
+export interface Correspondence {
+  id: string;
+  message_id: string;
+  sender_display_name: string;
+  subject: string;
+  description: string;
+  sent_at: string;
+  attachment_name: string;
+  local_attachment_path: string;
+  is_read: number;
+  created_at: string;
+}
+
+// ===== Mail (Supabase RLS-enforced, receive-only) =====
+
+export interface MailAttachment {
+  id: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  storedPath: string;
+  createdAt: string;
+}
+
+export interface MailMessage {
+  id: string;
+  remoteId: number | null;
+  folder: 'inbox' | 'sent';
+  subject: string;
+  body: string;
+  senderAccountId: string;
+  senderOrgType: string;
+  senderOrgId: string;
+  senderDisplayName: string;
+  recipientOrgType: string;
+  recipientOrgId: string;
+  recipientDisplayName: string;
+  isRead: number;
+  status: string | null;
+  createdAt: string;
+  updatedAt: string;
+  attachments: MailAttachment[];
+}
+
+export interface MailContact {
+  senderAccountId: string;
+  senderDisplayName: string;
+  unreadCount: number;
+  totalCount: number;
+  latestMessageAt: string;
+  latestSubject: string;
+  messages: MailMessage[];
+}
+
 
