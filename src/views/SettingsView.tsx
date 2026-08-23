@@ -37,12 +37,14 @@ interface SettingsViewProps {
   schoolProfile: SchoolProfile | null;
   onProfileUpdated: (updated: SchoolProfile) => void;
   showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
+  onInstallUpdate?: (downloadUrl: string) => void;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
   schoolProfile,
   onProfileUpdated,
   showToast,
+  onInstallUpdate,
 }) => {
   const [activeTab, setActiveTab] = useState<'editable' | 'backup_accounts' | 'storage' | 'about' | 'appearance'>('editable');
 
@@ -813,11 +815,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                 {updateStatus?.hasUpdate && updateStatus.downloadUrl && (
                   <button
-                    onClick={() => api.openExternalUrl(updateStatus.downloadUrl!)}
+                    onClick={() => {
+                      if (onInstallUpdate) {
+                        onInstallUpdate(updateStatus.downloadUrl!);
+                      } else {
+                        api.openExternalUrl(updateStatus.downloadUrl!);
+                      }
+                    }}
                     className="flex-1 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold rounded-xl text-xs shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <Download className="w-4 h-4" />
-                    <span>تنزيل التحديث</span>
+                    <span>تنزيل وتثبيت</span>
                   </button>
                 )}
               </div>

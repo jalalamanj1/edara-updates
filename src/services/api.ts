@@ -517,6 +517,38 @@ export const api = {
     return res.json();
   },
 
+  // Auto-update: download the installer EXE via Electron main process
+  async downloadUpdate(url: string): Promise<{ success: boolean; filePath?: string; error?: string; canceled?: boolean }> {
+    const bridge = (window as any).edaraDesktop;
+    if (!bridge?.downloadUpdate) return { success: false, error: 'Not in Electron' };
+    return bridge.downloadUpdate(url);
+  },
+
+  // Auto-update: run the installer silently and quit the app
+  async installUpdate(filePath: string): Promise<{ success: boolean; error?: string }> {
+    const bridge = (window as any).edaraDesktop;
+    if (!bridge?.installUpdate) return { success: false, error: 'Not in Electron' };
+    return bridge.installUpdate(filePath);
+  },
+
+  // Auto-update: cancel an in-progress download
+  cancelUpdateDownload(): void {
+    const bridge = (window as any).edaraDesktop;
+    if (bridge?.cancelUpdateDownload) bridge.cancelUpdateDownload();
+  },
+
+  // Auto-update: subscribe to download progress
+  onUpdateDownloadProgress(callback: (data: { progress: number; downloadedBytes: number; totalBytes: number }) => void): void {
+    const bridge = (window as any).edaraDesktop;
+    if (bridge?.onUpdateDownloadProgress) bridge.onUpdateDownloadProgress(callback);
+  },
+
+  // Auto-update: unsubscribe from download progress
+  offUpdateDownloadProgress(callback: (data: { progress: number; downloadedBytes: number; totalBytes: number }) => void): void {
+    const bridge = (window as any).edaraDesktop;
+    if (bridge?.offUpdateDownloadProgress) bridge.offUpdateDownloadProgress(callback);
+  },
+
   // Generic external URL opener (https only).
   // In Electron this is routed to the MAIN process via the preload bridge, which
   // calls shell.openExternal() and opens the OS DEFAULT browser. It must NEVER use

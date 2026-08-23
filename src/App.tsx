@@ -47,6 +47,15 @@ export const App: React.FC = () => {
   // Mail navigation params (contactId or messageId from dashboard/notification)
   const [mailParams, setMailParams] = useState<Record<string, string> | null>(null);
 
+  // Auto-update state
+  const [updateModal, setUpdateModal] = useState<{
+    version: string;
+    notes: string | null;
+    downloadUrl: string;
+  } | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
+  const [isInstalling, setIsInstalling] = useState(false);
+
   // Toasts
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
@@ -166,13 +175,15 @@ export const App: React.FC = () => {
           !cancelled &&
           status.hasUpdate &&
           status.latestVersion &&
+          status.downloadUrl &&
           !notifiedVersionsRef.current.has(status.latestVersion)
         ) {
           notifiedVersionsRef.current.add(status.latestVersion);
-          showToast(
-            `يتوفر إصدار جديد من Edara (v${status.latestVersion}). يمكنك تنزيله من الإعدادات > حول التطبيق.`,
-            'info'
-          );
+          setUpdateModal({
+            version: status.latestVersion,
+            notes: status.releaseNotes || null,
+            downloadUrl: status.downloadUrl,
+          });
         }
       } catch (err) {
         console.warn('Update check failed:', err);
@@ -186,7 +197,21 @@ export const App: React.FC = () => {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [showToast]);
+  }, []);
+
+  // Listen for download progress from Electron main process
+  useEffect(() => {
+    const bridge = (window as any).edaraDesktop;
+    if (!bridge?.onUpdateDownloadProgress) return;
+
+    const handler = (data: { progress: number }) => {
+      setDownloadProgress(data.progress);
+    };
+    bridge.onUpdateDownloadProgress(handler);
+    return () => {
+      if (bridge?.offUpdateDownloadProgress) bridge.offUpdateDownloadProgress(handler);
+    };
+  }, []);
 
   // Sync the Supabase account identity into the local school_profile.
   //
@@ -317,6 +342,37 @@ export const App: React.FC = () => {
     setAppStep('main');
   };
 
+  // ─── Auto-update: download, install, restart ─────────────────────────────
+  const handleDownloadAndInstall = useCallback(async (url: string) => {
+    setUpdateModal(null);
+    setDownloadProgress(0);
+    try {
+      const result = await api.downloadUpdate(url);
+      if (result.canceled) {
+        setDownloadProgress(null);
+        return;
+      }
+      if (!result.success || !result.filePath) {
+        setDownloadProgress(null);
+        showToast(result.error || 'فشل تنزيل التحديث.', 'error');
+        return;
+      }
+      // Download complete — install
+      setDownloadProgress(null);
+      setIsInstalling(true);
+      const installResult = await api.installUpdate(result.filePath);
+      if (!installResult.success) {
+        setIsInstalling(false);
+        showToast(installResult.error || 'فشل تثبيت التحديث.', 'error');
+      }
+      // If success, the app is quitting — no need to update state
+    } catch (err) {
+      setDownloadProgress(null);
+      setIsInstalling(false);
+      showToast('حدث خطأ أثناء التحديث.', 'error');
+    }
+  }, [showToast]);
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans dir-rtl antialiased flex flex-col overflow-hidden">
       {/* Toast Notifications */}
@@ -417,10 +473,84 @@ export const App: React.FC = () => {
                   schoolProfile={schoolProfile}
                   onProfileUpdated={handleProfileUpdated}
                   showToast={showToast}
+                  onInstallUpdate={(url) => setUpdateModal({ version: '', notes: null, downloadUrl: url })}
                 />
                 )}
               </div>
             </main>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Auto-Update: Confirm Modal ─────────────────────────────────── */}
+      {updateModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden">
+            <div className="px-6 py-4 bg-blue-600 text-white flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center font-bold text-sm">U</div>
+              <h3 className="text-lg font-bold">تحديث جديد متاح</h3>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-slate-700 font-bold text-sm">
+                يتوفر إصدار جديد من Edara <span className="text-blue-600">v{updateModal.version}</span>.
+                هل تريد التنزيل والتثبيت الآن؟
+              </p>
+              {updateModal.notes && (
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-600 leading-relaxed max-h-32 overflow-y-auto whitespace-pre-wrap">
+                  {updateModal.notes}
+                </div>
+              )}
+              <p className="text-xs text-slate-400 font-medium">
+                سيتم تنزيل المثبّت ثم تثبيت التحديث وإعادة تشغيل التطبيق تلقائياً.
+              </p>
+            </div>
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-3">
+              <button
+                onClick={() => setUpdateModal(null)}
+                className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200 rounded-xl cursor-pointer"
+              >
+                لاحقاً
+              </button>
+              <button
+                onClick={() => handleDownloadAndInstall(updateModal.downloadUrl)}
+                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold text-sm rounded-xl shadow-xs transition-colors cursor-pointer"
+              >
+                تنزيل وتثبيت
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Auto-Update: Download Progress Overlay ──────────────────────── */}
+      {(downloadProgress !== null || isInstalling) && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full border border-slate-200 p-8 text-center">
+            {isInstalling ? (
+              <>
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-blue-100 flex items-center justify-center">
+                  <svg className="w-8 h-8 text-blue-600 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-black text-slate-900 mb-2">جاري تثبيت التحديث...</h3>
+                <p className="text-sm text-slate-500">سيتم إعادة تشغيل التطبيق تلقائياً بعد الانتهاء.</p>
+              </>
+            ) : (
+              <>
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-blue-100 flex items-center justify-center">
+                  <span className="text-2xl font-black text-blue-600">{downloadProgress}%</span>
+                </div>
+                <h3 className="text-lg font-black text-slate-900 mb-2">جاري تنزيل التحديث...</h3>
+                <div className="w-full bg-slate-200 rounded-full h-2.5 mt-3">
+                  <div
+                    className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+                    style={{ width: `${downloadProgress}%` }}
+                  />
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

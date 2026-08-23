@@ -284,6 +284,115 @@ ipcMain.on('showNotification', (event, { title, body, messageId }) => {
   } catch {}
 });
 
+// ─── Auto-Update: Download, Install & Restart ────────────────────────────────
+let updateDownloadAbort = null;
+
+ipcMain.on('cancelUpdateDownload', () => {
+  if (updateDownloadAbort) {
+    updateDownloadAbort.abort();
+    updateDownloadAbort = null;
+  }
+});
+
+ipcMain.handle('downloadUpdate', async (event, { url }) => {
+  if (!url || typeof url !== 'string') return { success: false, error: 'Invalid URL' };
+
+  const https = url.startsWith('https') ? require('https') : require('http');
+  const tempDir = app.getPath('temp');
+  const fileName = `Edara-Setup-${Date.now()}.exe`;
+  const destPath = path.join(tempDir, fileName);
+
+  updateDownloadAbort = new AbortController();
+
+  return new Promise((resolve) => {
+    const doRequest = (requestUrl) => {
+      const mod = requestUrl.startsWith('https') ? require('https') : require('http');
+      const req = mod.get(requestUrl, { signal: updateDownloadAbort.signal }, (res) => {
+        // Follow redirects (301, 302, 307, 308)
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          doRequest(res.headers.location);
+          return;
+        }
+        if (res.statusCode !== 200) {
+          resolve({ success: false, error: `HTTP ${res.statusCode}` });
+          return;
+        }
+        const totalBytes = parseInt(res.headers['content-length'] || '0', 10);
+        let downloadedBytes = 0;
+        const fileStream = fs.createWriteStream(destPath);
+
+        res.on('data', (chunk) => {
+          downloadedBytes += chunk.length;
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            const progress = totalBytes > 0 ? Math.round((downloadedBytes / totalBytes) * 100) : 0;
+            mainWindow.webContents.send('update-download-progress', { progress, downloadedBytes, totalBytes });
+          }
+        });
+
+        res.pipe(fileStream);
+
+        fileStream.on('finish', () => {
+          fileStream.close(() => {
+            updateDownloadAbort = null;
+            resolve({ success: true, filePath: destPath });
+          });
+        });
+
+        fileStream.on('error', (err) => {
+          updateDownloadAbort = null;
+          try { fs.unlinkSync(destPath); } catch {}
+          resolve({ success: false, error: err.message });
+        });
+      });
+
+      req.on('error', (err) => {
+        updateDownloadAbort = null;
+        resolve({ success: false, error: err.message });
+      });
+
+      req.on('abort', () => {
+        updateDownloadAbort = null;
+        try { fs.unlinkSync(destPath); } catch {}
+        resolve({ success: false, canceled: true });
+      });
+    };
+
+    doRequest(url);
+  });
+});
+
+ipcMain.handle('installUpdate', async (event, { filePath }) => {
+  if (!filePath || typeof filePath !== 'string' || !fs.existsSync(filePath)) {
+    return { success: false, error: 'Installer not found' };
+  }
+
+  try {
+    isQuitting = true;
+
+    // Spawn the NSIS installer silently
+    const child = spawn(filePath, ['/S'], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    child.unref();
+
+    // Give the installer a moment to attach, then quit
+    setTimeout(() => {
+      if (tray) {
+        tray.destroy();
+        tray = null;
+      }
+      app.quit();
+    }, 500);
+
+    return { success: true };
+  } catch (err) {
+    isQuitting = false;
+    return { success: false, error: err.message || 'Failed to start installer' };
+  }
+});
+
 // ─── Tray ───────────────────────────────────────────────────────────────────
 function createTray() {
   const iconPath = path.join(__dirname, '..', 'assets', 'icon.png');
