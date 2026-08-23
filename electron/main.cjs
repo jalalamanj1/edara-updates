@@ -33,7 +33,8 @@ if (!gotTheLock) {
 
   // ─── Lifecycle (only runs for the single instance) ──────────────────────
   app.whenReady().then(async () => {
-    console.log(`[EDARA STARTUP] pid=${process.pid} packaged=${app.isPackaged} userData=${app.getPath('userData')} appPath=${app.getAppPath()} cwd=${process.cwd()}`);
+    console.log(`[EDARA STARTUP] pid=${process.pid} packaged=${app.isPackaged} version=${require('../package.json').version} exe=${app.getPath('exe')} appPath=${app.getAppPath()} userData=${app.getPath('userData')} cwd=${process.cwd()}`);
+    console.log(`[EDARA STARTUP] pid=${process.pid} process.execPath=${process.execPath}`);
     const backendReady = await startBackend();
     if (!backendReady) {
       dialog.showErrorBox(
@@ -62,14 +63,14 @@ if (!gotTheLock) {
 
   app.on('before-quit', async () => {
     if (isQuitting) return; // prevent re-entry
-    console.log(`[EDARA UPDATE] pid=${process.pid} before-quit fired, shutting down backend`);
+    console.log(`[EDARA LIFECYCLE] pid=${process.pid} before-quit fired`);
     isQuitting = true;
     await stopBackend();
     if (tray) {
       tray.destroy();
       tray = null;
     }
-    console.log(`[EDARA UPDATE] pid=${process.pid} before-quit complete`);
+    console.log(`[EDARA LIFECYCLE] pid=${process.pid} before-quit complete`);
   });
 }
 
@@ -371,33 +372,118 @@ ipcMain.handle('installUpdate', async (event, { filePath }) => {
   try {
     isQuitting = true;
     console.log(`[EDARA UPDATE] pid=${process.pid} preparing installation from ${filePath}`);
+    console.log(`[EDARA UPDATE] pid=${process.pid} exe=${app.getPath('exe')} appPath=${app.getAppPath()}`);
 
-    // Write a batch helper that waits for the installer then relaunches Edara.
-    // The batch file runs detached and survives after the Electron process exits.
+    // Write a Node.js helper script that waits for the installer then relaunches Edara.
+    // Node.js is guaranteed available inside Electron. The script runs in its own
+    // process group (detached: true, shell: false) and survives after app.exit().
     const tempDir = app.getPath('temp');
-    const helperPath = path.join(tempDir, `edara-update-${Date.now()}.cmd`);
-    const appExe = app.getPath('exe');
+    const helperPath = path.join(tempDir, `edara-relaunch-${Date.now()}.js`);
+    const installerPath = filePath.replace(/\\/g, '\\\\');
+    const exePath = app.getPath('exe').replace(/\\/g, '\\\\');
 
-    const batchContent = [
-      '@echo off',
-      'echo [EDARA UPDATE] waiting for installer to finish...',
-      `start /wait "" "${filePath}" /S`,
-      'echo [EDARA UPDATE] installer finished, relaunching app...',
-      `if exist "${appExe}" (`,
-      `  start "" "${appExe}"`,
-      ') else (',
-      '  echo [EDARA UPDATE] ERROR: exe not found after install',
-      ')',
-      'echo [EDARA UPDATE] cleaning up helper...',
-      `del "%~f0"`,
-      'exit',
-    ].join('\r\n');
+    const helperScript = `
+const { spawn } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
-    fs.writeFileSync(helperPath, batchContent, 'ascii');
+const INSTALLER = "${filePath}";
+const APP_EXE = "${app.getPath('exe')}";
+
+function log(msg) {
+  const line = '[EDARA RELAUNCH] ' + new Date().toISOString() + ' ' + msg;
+  console.log(line);
+  try {
+    const logPath = path.join(require('os').tmpdir(), 'edara-update-relaunch.log');
+    fs.appendFileSync(logPath, line + '\\n');
+  } catch {}
+}
+
+log('helper started, pid=' + process.pid);
+log('installer=' + INSTALLER);
+log('appExe=' + APP_EXE);
+
+// Wait for the old Edara process to fully exit (port 3000 released)
+function waitForPort(port, maxWaitMs) {
+  return new Promise((resolve) => {
+    const net = require('net');
+    const start = Date.now();
+    const tryPort = () => {
+      if (Date.now() - start > maxWaitMs) { resolve(false); return; }
+      const s = net.createServer();
+      s.once('error', () => { setTimeout(tryPort, 500); });
+      s.once('listening', () => { s.close(() => resolve(true)); });
+      s.listen(port, '127.0.0.1');
+    };
+    tryPort();
+  });
+}
+
+async function main() {
+  log('waiting for port 3000 to be released...');
+  const released = await waitForPort(3000, 15000);
+  log('port3000_released=' + released);
+
+  log('launching installer...');
+  const child = spawn(INSTALLER, ['/S'], {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true,
+  });
+  child.unref();
+  log('installer spawned, pid=' + child.pid);
+
+  // Wait for the installer process to exit
+  await new Promise((resolve) => {
+    child.on('exit', (code) => { log('installer exited, code=' + code); resolve(); });
+    child.on('error', (err) => { log('installer error: ' + err.message); resolve(); });
+    // Fallback timeout — installer should finish within 120s
+    setTimeout(() => { log('installer wait timeout, proceeding'); resolve(); }, 120000);
+  });
+
+  // Verify the new executable exists
+  if (fs.existsSync(APP_EXE)) {
+    log('launching new app: ' + APP_EXE);
+    const appChild = spawn(APP_EXE, [], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    appChild.unref();
+    log('new app launched, pid=' + appChild.pid);
+  } else {
+    log('ERROR: app exe not found after install: ' + APP_EXE);
+  }
+
+  // Self-delete
+  try {
+    fs.unlinkSync(__filename);
+    log('helper self-deleted');
+  } catch (e) {
+    log('self-delete failed: ' + e.message);
+  }
+
+  log('helper done');
+  process.exit(0);
+}
+
+main().catch((err) => {
+  log('FATAL: ' + err.message);
+  process.exit(1);
+});
+`;
+
+    fs.writeFileSync(helperPath, helperScript, 'utf8');
     console.log(`[EDARA UPDATE] pid=${process.pid} helper written to ${helperPath}`);
 
-    // Spawn the batch file detached — it survives after app.quit()
-    const child = spawn('cmd.exe', ['/c', helperPath], {
+    // Initialize the relaunch log
+    try {
+      const logPath = path.join(app.getPath('temp'), 'edara-update-relaunch.log');
+      fs.writeFileSync(logPath, `[EDARA RELAUNCH] ${new Date().toISOString()} installUpdate called, pid=${process.pid}\n`);
+    } catch {}
+
+    // Spawn the Node.js helper detached — runs in its own process group
+    const child = spawn(process.execPath, [helperPath], {
       detached: true,
       stdio: 'ignore',
       windowsHide: true,
@@ -405,15 +491,18 @@ ipcMain.handle('installUpdate', async (event, { filePath }) => {
     child.unref();
     console.log(`[EDARA UPDATE] pid=${process.pid} helper spawned (pid=${child.pid})`);
 
-    // Destroy tray and quit after a short delay so the helper starts cleanly
+    // Destroy tray, stop backend synchronously, then exit
+    if (tray) {
+      tray.destroy();
+      tray = null;
+    }
+    backendState = 'STOPPED';
+
+    // Force exit after a short delay — the helper has already started
     setTimeout(() => {
-      console.log(`[EDARA UPDATE] pid=${process.pid} quitting for update`);
-      if (tray) {
-        tray.destroy();
-        tray = null;
-      }
-      app.quit();
-    }, 500);
+      console.log(`[EDARA UPDATE] pid=${process.pid} force exiting for update`);
+      process.exit(0);
+    }, 300);
 
     return { success: true };
   } catch (err) {
