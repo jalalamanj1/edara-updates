@@ -62,12 +62,14 @@ if (!gotTheLock) {
 
   app.on('before-quit', async () => {
     if (isQuitting) return; // prevent re-entry
+    console.log(`[EDARA UPDATE] pid=${process.pid} before-quit fired, shutting down backend`);
     isQuitting = true;
     await stopBackend();
     if (tray) {
       tray.destroy();
       tray = null;
     }
+    console.log(`[EDARA UPDATE] pid=${process.pid} before-quit complete`);
   });
 }
 
@@ -368,17 +370,44 @@ ipcMain.handle('installUpdate', async (event, { filePath }) => {
 
   try {
     isQuitting = true;
+    console.log(`[EDARA UPDATE] pid=${process.pid} preparing installation from ${filePath}`);
 
-    // Spawn the NSIS installer silently
-    const child = spawn(filePath, ['/S'], {
+    // Write a batch helper that waits for the installer then relaunches Edara.
+    // The batch file runs detached and survives after the Electron process exits.
+    const tempDir = app.getPath('temp');
+    const helperPath = path.join(tempDir, `edara-update-${Date.now()}.cmd`);
+    const appExe = app.getPath('exe');
+
+    const batchContent = [
+      '@echo off',
+      'echo [EDARA UPDATE] waiting for installer to finish...',
+      `start /wait "" "${filePath}" /S`,
+      'echo [EDARA UPDATE] installer finished, relaunching app...',
+      `if exist "${appExe}" (`,
+      `  start "" "${appExe}"`,
+      ') else (',
+      '  echo [EDARA UPDATE] ERROR: exe not found after install',
+      ')',
+      'echo [EDARA UPDATE] cleaning up helper...',
+      `del "%~f0"`,
+      'exit',
+    ].join('\r\n');
+
+    fs.writeFileSync(helperPath, batchContent, 'ascii');
+    console.log(`[EDARA UPDATE] pid=${process.pid} helper written to ${helperPath}`);
+
+    // Spawn the batch file detached — it survives after app.quit()
+    const child = spawn('cmd.exe', ['/c', helperPath], {
       detached: true,
       stdio: 'ignore',
       windowsHide: true,
     });
     child.unref();
+    console.log(`[EDARA UPDATE] pid=${process.pid} helper spawned (pid=${child.pid})`);
 
-    // Give the installer a moment to attach, then quit
+    // Destroy tray and quit after a short delay so the helper starts cleanly
     setTimeout(() => {
+      console.log(`[EDARA UPDATE] pid=${process.pid} quitting for update`);
       if (tray) {
         tray.destroy();
         tray = null;
@@ -389,6 +418,7 @@ ipcMain.handle('installUpdate', async (event, { filePath }) => {
     return { success: true };
   } catch (err) {
     isQuitting = false;
+    console.error(`[EDARA UPDATE] pid=${process.pid} installUpdate error:`, err);
     return { success: false, error: err.message || 'Failed to start installer' };
   }
 });
