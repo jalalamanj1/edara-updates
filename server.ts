@@ -2293,19 +2293,22 @@ async function startServer() {
     }
 
     const appsScriptUrl = GOOGLE_APPS_SCRIPT_URL + '?action=list&folderId=' + encodeURIComponent(targetFolderId);
+    console.log(`[GOV DRIVE SERVER] fetchFromAppsScript folderId=${targetFolderId}`);
 
+    const t0 = Date.now();
     const res = await fetch(appsScriptUrl);
+    const elapsed = Date.now() - t0;
 
     if (!res.ok) {
       const body = await res.text().catch(() => '');
-      console.error('[GOV DRIVE] HTTP ' + res.status, body.substring(0, 300));
+      console.error(`[GOV DRIVE SERVER] HTTP ${res.status} (${elapsed}ms)`, body.substring(0, 300));
       throw new Error('Google Apps Script returned HTTP ' + res.status);
     }
 
     const json: any = await res.json();
 
     if (!json.success) {
-      console.error('[GOV DRIVE] Apps Script error:', json.error, json.message);
+      console.error('[GOV DRIVE SERVER] Apps Script error:', json.error, json.message);
       throw new Error(json.message || 'Apps Script returned error: ' + json.error);
     }
 
@@ -2342,6 +2345,7 @@ async function startServer() {
       });
     }
 
+    console.log(`[GOV DRIVE SERVER] Apps Script responded (${elapsed}ms) files=${json.files?.length || 0} folders=${json.folders?.length || 0} total=${items.length}`);
     return {
       items,
       folderName: json.folderName || 'المجلد الرئيسي',

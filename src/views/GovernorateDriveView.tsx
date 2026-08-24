@@ -225,6 +225,8 @@ export const GovernorateDriveView: React.FC<GovernorateDriveViewProps> = ({
 
   // Fetch drive files — module-level cache, dedup in-flight, background refresh
   const fetchDriveItems = useCallback(async (folderId: string, force = false) => {
+    console.log(`[GOV DRIVE REFRESH] fetchDriveItems called folderId=${folderId} force=${force}`);
+
     const cached = getCachedFiles(folderId);
     const cacheStale = isCacheStale(folderId);
     const hasCache = !!cached;
@@ -237,8 +239,12 @@ export const GovernorateDriveView: React.FC<GovernorateDriveViewProps> = ({
 
     // If cache is fresh and not forced, skip network entirely
     if (hasCache && !cacheStale && !force) {
-      console.log(`[GOV DRIVE PERF] cache HIT for ${folderId} (${cached.length} items, ${Math.round(Date.now() - (_fileCache[folderId]?.timestamp || 0))}ms old)`);
+      console.log(`[GOV DRIVE REFRESH] cache HIT — skipping network (${cached.length} items, ${Math.round(Date.now() - (_fileCache[folderId]?.timestamp || 0))}ms old)`);
       return;
+    }
+
+    if (force) {
+      console.log(`[GOV DRIVE REFRESH] force=true — will make network request`);
     }
 
     // Show loading only if we have no cache at all
@@ -248,13 +254,15 @@ export const GovernorateDriveView: React.FC<GovernorateDriveViewProps> = ({
     }
 
     if (!navigator.onLine) {
+      console.log(`[GOV DRIVE REFRESH] offline`);
       setErrorState('offline');
       setIsLoading(false);
       return;
     }
 
-    // Deduplicate in-flight requests for the same folder
-    if (_inflightFiles[folderId]) {
+    // Deduplicate in-flight requests for the same folder (but NOT for forced refresh)
+    if (!force && _inflightFiles[folderId]) {
+      console.log(`[GOV DRIVE REFRESH] dedup — waiting for existing request`);
       try {
         const result = await _inflightFiles[folderId];
         if (result.success) {
@@ -268,6 +276,7 @@ export const GovernorateDriveView: React.FC<GovernorateDriveViewProps> = ({
       return;
     }
 
+    console.log(`[GOV DRIVE REFRESH] request started folderId=${folderId}`);
     const t0 = performance.now();
     const requestPromise = api.getGovernorateDriveFiles(folderId);
     _inflightFiles[folderId] = requestPromise;
@@ -275,17 +284,21 @@ export const GovernorateDriveView: React.FC<GovernorateDriveViewProps> = ({
     try {
       const res = await requestPromise;
       const elapsed = Math.round(performance.now() - t0);
-      console.log(`[GOV DRIVE PERF] files loaded in ${elapsed}ms (${res.items?.length || 0} items)`);
+      console.log(`[GOV DRIVE REFRESH] response received (${elapsed}ms) success=${res.success} files=${res.items?.length || 0}`);
+
       if (res.success) {
         const list = res.items || [];
         setCachedFiles(folderId, list);
         setAllItems(list);
         setErrorState('none');
+        console.log(`[GOV DRIVE REFRESH] cache updated and UI set with ${list.length} items`);
       } else {
+        console.log(`[GOV DRIVE REFRESH] request returned success=false`);
         // Don't replace working cached data with error
         if (!hasCache) setErrorState('error');
       }
-    } catch (e) {
+    } catch (e: any) {
+      console.log(`[GOV DRIVE REFRESH] request FAILED: ${e?.message || e}`);
       // Don't replace working cached data with error
       if (!hasCache) setErrorState(!navigator.onLine ? 'offline' : 'error');
     } finally {
@@ -297,6 +310,7 @@ export const GovernorateDriveView: React.FC<GovernorateDriveViewProps> = ({
   // Initial load + background refresh when stale
   useEffect(() => {
     if (config?.folderId) {
+      console.log(`[GOV DRIVE FOLDER] initial load folderId=${config.folderId}`);
       setCurrentFolderId(config.folderId);
       setBreadcrumbs([{ id: config.folderId, name: config.governorateName || 'كتب رسمية' }]);
       // Fetch (will use cache if fresh, refresh in background if stale)
@@ -311,13 +325,15 @@ export const GovernorateDriveView: React.FC<GovernorateDriveViewProps> = ({
   // Background refresh every 60s (only if stale, otherwise no-op)
   useEffect(() => {
     if (!config?.folderId) return;
+    const folderId = config.folderId;
     const timer = setInterval(() => {
-      if (isCacheStale(currentFolderId)) {
-        fetchDriveItems(currentFolderId);
+      if (isCacheStale(folderId)) {
+        console.log(`[GOV DRIVE FOLDER] background refresh (stale) folderId=${folderId}`);
+        fetchDriveItems(folderId);
       }
     }, 60000);
     return () => clearInterval(timer);
-  }, [currentFolderId, config?.folderId, fetchDriveItems]);
+  }, [config?.folderId, fetchDriveItems]);
 
   const handleOpenFolder = (folder: DriveItem) => {
     setCurrentFolderId(folder.id);

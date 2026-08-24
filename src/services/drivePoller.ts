@@ -25,19 +25,14 @@ let _knownFileIds: Set<string> = new Set();
 let _baselineEstablished = false;
 let _lastCheckedAt: number | null = null;
 let _config: GovernorateDriveConfig | null = null;
-
-// ─── State helpers ──────────────────────────────────────────────────────────
-function getState(): DrivePollState {
-  return {
-    fileCount: _knownFileIds.size,
-    hasNewFiles: false, // updated externally by the polling logic
-    knownFileIds: _knownFileIds,
-    lastCheckedAt: _lastCheckedAt,
-  };
-}
-
 let _hasNewFiles = false;
 
+// ─── Logging ────────────────────────────────────────────────────────────────
+function log(msg: string) {
+  console.log(`[GOV DRIVE POLL] ${msg}`);
+}
+
+// ─── State helpers ──────────────────────────────────────────────────────────
 function emit() {
   const state: DrivePollState = {
     fileCount: _knownFileIds.size,
@@ -61,26 +56,58 @@ function showDesktopNotification(title: string, body: string) {
 }
 
 // ─── Core poll logic ────────────────────────────────────────────────────────
-async function poll(): Promise<boolean> {
-  if (_inflight) return _inflight;
+let _pollGeneration = 0;
+
+async function poll(force = false): Promise<boolean> {
+  // Skip if a request is already running (unless forced)
+  if (_inflight && !force) {
+    log('tick skipped — inflight request');
+    return _inflight;
+  }
+
+  const gen = ++_pollGeneration;
 
   _inflight = (async () => {
+    const t0 = Date.now();
     try {
+      log('tick' + (force ? ' (forced)' : ''));
+
       // Ensure we have a config
       if (!_config) {
+        log('fetching config...');
         const configResult = await api.getGovernorateDriveConfig();
-        if (!configResult.success || !configResult.config) return false;
+        if (!configResult.success || !configResult.config) {
+          log('config FAILED: ' + (configResult.message || 'unknown'));
+          return false;
+        }
         _config = configResult.config;
+        log('config OK: folderId=' + _config.folderId);
       }
 
-      if (!_config?.folderId) return false;
+      if (!_config?.folderId) {
+        log('no folderId — skip');
+        return false;
+      }
 
       // Fetch files from the Drive folder
+      log('request started folderId=' + _config.folderId);
       const result = await api.getGovernorateDriveFiles(_config.folderId);
-      if (!result.success) return false;
+      const elapsed = Date.now() - t0;
+
+      // Check if a newer poll superseded this one
+      if (gen !== _pollGeneration) {
+        log('stale response discarded (gen=' + gen + ' current=' + _pollGeneration + ')');
+        return false;
+      }
+
+      if (!result.success) {
+        log('request FAILED (' + elapsed + 'ms): ' + (result.message || 'unknown'));
+        return false;
+      }
 
       const items = result.items || [];
       const currentIds = new Set(items.map((f: any) => f.id));
+      log('request completed (' + elapsed + 'ms) files=' + items.length + ' ids=' + [...currentIds].join(','));
 
       if (!_baselineEstablished) {
         // First poll: establish baseline, no notifications
@@ -88,11 +115,12 @@ async function poll(): Promise<boolean> {
         _baselineEstablished = true;
         _hasNewFiles = false;
         _lastCheckedAt = Date.now();
+        log('baseline established: ' + items.length + ' files');
         emit();
         return true;
       }
 
-      // Detect new files
+      // Detect new files by comparing IDs
       const newIds: string[] = [];
       currentIds.forEach((id) => {
         if (!_knownFileIds.has(id)) {
@@ -101,37 +129,36 @@ async function poll(): Promise<boolean> {
       });
 
       if (newIds.length > 0) {
-        // Find the names of new files
         const newFiles = items.filter((f: any) => newIds.includes(f.id));
         const firstName = newFiles[0]?.name || 'ملف جديد';
-
         _hasNewFiles = true;
+        log('NEW FILES DETECTED: ' + newIds.join(', '));
 
-        // Notify for each new file (or batch)
+        // Desktop notification
         if (newIds.length === 1) {
-          showDesktopNotification(
-            'مستند رسمي جديد',
-            `تمت إضافة: ${firstName}`
-          );
+          showDesktopNotification('مستند رسمي جديد', 'تمت إضافة: ' + firstName);
         } else {
-          showDesktopNotification(
-            'مستندات رسمية جديدة',
-            `تمت إضافة ${newIds.length} ملفات جديدة`
-          );
+          showDesktopNotification('مستندات رسمية جديدة', 'تمت إضافة ' + newIds.length + ' ملفات جديدة');
         }
+        log('notification shown');
       } else {
         _hasNewFiles = false;
       }
 
-      // Update known IDs to include all current files
+      // Update known IDs
       _knownFileIds = currentIds;
       _lastCheckedAt = Date.now();
+      log('known files updated: ' + _knownFileIds.size);
       emit();
       return true;
-    } catch {
+    } catch (err: any) {
+      log('ERROR: ' + (err?.message || err));
       return false;
     } finally {
-      _inflight = null;
+      // Only clear inflight if this is still the current generation
+      if (gen === _pollGeneration) {
+        _inflight = null;
+      }
     }
   })();
 
@@ -142,6 +169,7 @@ async function poll(): Promise<boolean> {
 export function startDrivePolling(): void {
   if (_running) return;
   _running = true;
+  log('polling STARTED');
 
   // Run immediately, then every 15s
   poll();
@@ -157,11 +185,12 @@ export function stopDrivePolling(): void {
     _timer = null;
   }
   _inflight = null;
+  log('polling STOPPED');
 }
 
 export function resetDriveBaseline(accountId: string): void {
-  // Only reset if the account actually changed
   if (_currentAccountId === accountId && _baselineEstablished) return;
+  log('baseline RESET for account=' + accountId);
   _currentAccountId = accountId;
   _knownFileIds = new Set();
   _baselineEstablished = false;
@@ -173,12 +202,12 @@ export function resetDriveBaseline(accountId: string): void {
 
 export function acknowledgeNewFiles(): void {
   _hasNewFiles = false;
+  log('new files ACKNOWLEDGED');
   emit();
 }
 
 export function subscribeDrivePoller(fn: Listener): () => void {
   _listeners.add(fn);
-  // Emit current state immediately
   fn({
     fileCount: _knownFileIds.size,
     hasNewFiles: _hasNewFiles,
@@ -199,7 +228,8 @@ export function getDrivePollState(): DrivePollState {
   };
 }
 
-/** Force an immediate poll (used when folder page opens). */
+/** Force an immediate poll — bypasses inflight dedup. */
 export function forceDrivePoll(): Promise<boolean> {
-  return poll();
+  log('force poll requested');
+  return poll(true);
 }
