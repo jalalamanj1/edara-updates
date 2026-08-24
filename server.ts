@@ -403,7 +403,7 @@ function generateUUID(): string {
 }
 
 // ---------- Update Checking (GitHub: jalalamanj1/edara-updates) ----------
-const APP_VERSION = '1.0.8';
+const APP_VERSION = '1.0.9';
 const UPDATE_REPO_OWNER = 'jalalamanj1';
 const UPDATE_REPO_NAME = 'edara-updates';
 const UPDATE_CHECK_INTERVAL_MS = 3 * 60 * 60 * 1000;

@@ -10,7 +10,7 @@ import type { Account, AccountType, DeviceStatus } from '../types';
 // ----------------------------------------------------------------------------
 
 const DEVICE_ID_KEY = 'edara_device_id';
-const APP_VERSION = '1.0.8';
+const APP_VERSION = '1.0.9';
 
 export type { Account, AccountType, DeviceStatus };
 

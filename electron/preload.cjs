@@ -2,7 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('edaraDesktop', {
   isDesktop: true,
-  appVersion: '1.0.8',
+  appVersion: '1.0.9',
   openExternalWebsite: (url) => ipcRenderer.send('openExternalDeveloperWebsite', url),
   openExternalUrl: (url) => ipcRenderer.send('openExternalUrl', url),
   openFile: (filePath) => ipcRenderer.send('openFile', filePath),

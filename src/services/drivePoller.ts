@@ -1,5 +1,6 @@
 import { api } from './api';
 import { getAccount } from './auth';
+import { notifyNewDriveFile, notifyNewDriveFiles } from './notificationService';
 import type { GovernorateDriveConfig } from '../types';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -41,18 +42,6 @@ function emit() {
     lastCheckedAt: _lastCheckedAt,
   };
   _listeners.forEach((fn) => fn(state));
-}
-
-// ─── Notification helper ────────────────────────────────────────────────────
-function showDesktopNotification(title: string, body: string) {
-  try {
-    const bridge = (window as any).edaraDesktop;
-    if (bridge?.showNotification) {
-      bridge.showNotification(title, body, null);
-    } else if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification(title, { body });
-    }
-  } catch {}
 }
 
 // ─── Core poll logic ────────────────────────────────────────────────────────
@@ -130,15 +119,15 @@ async function poll(force = false): Promise<boolean> {
 
       if (newIds.length > 0) {
         const newFiles = items.filter((f: any) => newIds.includes(f.id));
-        const firstName = newFiles[0]?.name || 'ملف جديد';
+        const firstName = newFiles[0]?.name || null;
         _hasNewFiles = true;
         log('NEW FILES DETECTED: ' + newIds.join(', '));
 
-        // Desktop notification
+        // Desktop notification via unified service
         if (newIds.length === 1) {
-          showDesktopNotification('مستند رسمي جديد', 'تمت إضافة: ' + firstName);
+          notifyNewDriveFile(firstName);
         } else {
-          showDesktopNotification('مستندات رسمية جديدة', 'تمت إضافة ' + newIds.length + ' ملفات جديدة');
+          notifyNewDriveFiles(newIds.length);
         }
         log('notification shown');
       } else {

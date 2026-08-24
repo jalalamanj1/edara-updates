@@ -1,4 +1,5 @@
 import { getPublishedNews, type NewsItem } from './newsService';
+import { notifyNewNews } from './notificationService';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 export interface NewsPollState {
@@ -23,6 +24,11 @@ let _baselineEstablished = false;
 let _lastCheckedAt: number | null = null;
 let _hasNewNews = false;
 
+// ─── Logging ────────────────────────────────────────────────────────────────
+function log(msg: string) {
+  console.log(`[EDARA NEWS POLL] ${msg}`);
+}
+
 // ─── State helpers ──────────────────────────────────────────────────────────
 function emit() {
   const state: NewsPollState = {
@@ -33,26 +39,21 @@ function emit() {
   _listeners.forEach((fn) => fn(state));
 }
 
-// ─── Notification helper ────────────────────────────────────────────────────
-function showDesktopNotification(title: string, body: string) {
-  try {
-    const bridge = (window as any).edaraDesktop;
-    if (bridge?.showNotification) {
-      bridge.showNotification(title, body, null);
-    } else if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification(title, { body });
-    }
-  } catch {}
-}
-
 // ─── Core poll logic ────────────────────────────────────────────────────────
 async function poll(): Promise<boolean> {
-  if (_inflight) return _inflight;
+  if (_inflight) {
+    log('tick skipped — inflight request');
+    return _inflight;
+  }
 
   _inflight = (async () => {
+    const t0 = Date.now();
     try {
+      log('tick');
       const items = await getPublishedNews();
+      const elapsed = Date.now() - t0;
       const currentIds = new Set(items.map((n) => n.id));
+      log('request completed (' + elapsed + 'ms) news=' + items.length);
 
       if (!_baselineEstablished) {
         // First poll: establish baseline, no notifications
@@ -60,6 +61,7 @@ async function poll(): Promise<boolean> {
         _baselineEstablished = true;
         _hasNewNews = false;
         _lastCheckedAt = Date.now();
+        log('baseline established: ' + items.length + ' items');
         emit();
         return true;
       }
@@ -75,15 +77,12 @@ async function poll(): Promise<boolean> {
       if (newIds.length > 0) {
         _hasNewNews = true;
 
-        // Find the titles of new items
+        // Find the titles of new items — notify for each new one
         const newItems = items.filter((n) => newIds.includes(n.id));
-        const firstTitle = newItems[0]?.title || 'خبر جديد';
-
-        if (newIds.length === 1) {
-          showDesktopNotification('خبر جديد', firstTitle);
-        } else {
-          showDesktopNotification('أخبار جديدة', `تم نشر ${newIds.length} أخبار جديدة`);
+        for (const item of newItems) {
+          notifyNewNews(item.title || null, item.id || null);
         }
+        log('NEW NEWS DETECTED: ' + newIds.join(', '));
       } else {
         _hasNewNews = false;
       }
@@ -91,9 +90,11 @@ async function poll(): Promise<boolean> {
       // Update known IDs
       _knownNewsIds = currentIds;
       _lastCheckedAt = Date.now();
+      log('known news updated: ' + _knownNewsIds.size);
       emit();
       return true;
-    } catch {
+    } catch (err: any) {
+      log('ERROR: ' + (err?.message || err));
       return false;
     } finally {
       _inflight = null;
@@ -107,6 +108,7 @@ async function poll(): Promise<boolean> {
 export function startNewsPolling(): void {
   if (_running) return;
   _running = true;
+  log('polling STARTED');
 
   // Run immediately, then every 15s
   poll();
@@ -122,6 +124,7 @@ export function stopNewsPolling(): void {
     _timer = null;
   }
   _inflight = null;
+  log('polling STOPPED');
 }
 
 export function resetNewsBaseline(accountId: string): void {

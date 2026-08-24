@@ -113,21 +113,61 @@ export const App: React.FC = () => {
     }
   }, [appStep]);
 
-  // Notification click handler: navigate to mail and open the specific message.
+  // Notification click handler: navigate based on notification type
   useEffect(() => {
     const bridge = (window as any).edaraDesktop;
-    if (!bridge?.onNotificationClick) return;
-    const handler = (data: { messageId?: string }) => {
-      if (data?.messageId) {
-        setMailParams({ messageId: data.messageId });
+
+    // Listen for unified notification clicks from notificationService
+    const handleUnifiedClick = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail) return;
+
+      if (detail.type === 'drive') {
+        setCurrentTab('governorate_drive');
+        if (bridge?.focusWindow) bridge.focusWindow();
+      } else if (detail.type === 'news') {
+        setCurrentTab('dashboard');
+        if (bridge?.focusWindow) bridge.focusWindow();
+      } else if (detail.type === 'mail' && detail.target) {
+        setMailParams({ messageId: detail.target });
         setCurrentTab('mail');
-        // Focus the window if it's in the background
-        if (bridge.focusWindow) bridge.focusWindow();
+        if (bridge?.focusWindow) bridge.focusWindow();
       }
     };
-    bridge.onNotificationClick(handler);
+    window.addEventListener('edara-notification-click', handleUnifiedClick);
+
+    // Also handle legacy Electron IPC notification-click (for mail)
+    if (bridge?.onNotificationClick) {
+      const handler = (data: { messageId?: string }) => {
+        if (data?.messageId) {
+          // Try to parse as JSON payload first (unified format)
+          try {
+            const payload = JSON.parse(data.messageId);
+            if (payload.type === 'drive') {
+              setCurrentTab('governorate_drive');
+            } else if (payload.type === 'news') {
+              setCurrentTab('dashboard');
+            } else if (payload.type === 'mail' && payload.target) {
+              setMailParams({ messageId: payload.target });
+              setCurrentTab('mail');
+            }
+          } catch {
+            // Legacy format — treat as mail messageId
+            setMailParams({ messageId: data.messageId });
+            setCurrentTab('mail');
+          }
+          if (bridge?.focusWindow) bridge.focusWindow();
+        }
+      };
+      bridge.onNotificationClick(handler);
+      return () => {
+        window.removeEventListener('edara-notification-click', handleUnifiedClick);
+        if (bridge.offNotificationClick) bridge.offNotificationClick(handler);
+      };
+    }
+
     return () => {
-      if (bridge.offNotificationClick) bridge.offNotificationClick(handler);
+      window.removeEventListener('edara-notification-click', handleUnifiedClick);
     };
   }, []);
 
